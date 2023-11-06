@@ -6,13 +6,10 @@
 
 #define N_STATES 15
 #define N_INPUTS 6
-#define N_MEASUREMENTS 6
+#define N_MEASUREMENTS 4
 
-extern float X[N_STATES];
-extern float P[N_STATES][N_STATES];
-extern float Q_diag[N_INPUTS];
-extern float R_diag[N_MEASUREMENTS];
-
+void ekf_init(float Q_diag[N_INPUTS], float R_diag[N_MEASUREMENTS], float X0[N_STATES], float P_diag0[N_STATES]);
+float* ekf_get_state();
 void ekf_predict(float U[N_INPUTS], float dt);
 void ekf_update(float Z[N_MEASUREMENTS]);
 
