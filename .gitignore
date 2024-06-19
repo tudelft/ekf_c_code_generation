@@ -1,0 +1,3 @@
+*.npz
+*.csv
+/c_code
