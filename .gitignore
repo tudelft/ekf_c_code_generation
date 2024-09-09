@@ -1,3 +1,6 @@
 *.npz
 *.csv
-/c_code
+.ipynb_checkpoints/
+*.so
+*.o
+*.vscode
