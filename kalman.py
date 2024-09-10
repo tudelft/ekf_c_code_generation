@@ -41,7 +41,6 @@ f_continuous = Matrix([
     0,0,0,0,0,0
 ])
 
-
 # discretized dynamics:
 f = X + f_continuous*dt
 

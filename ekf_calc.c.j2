@@ -5,6 +5,7 @@
 
 #include "ekf_calc.h"
 #include <math.h>
+#include <stdio.h>
 
 float ekf_use_phi;
 float ekf_use_theta;
@@ -17,9 +18,16 @@ float ekf_R[N_MEASUREMENTS];   // Kalman filter measurement noise covariance mat
 float ekf_X[N_STATES];
 float ekf_X_new[N_STATES];
 
-// covariance matrix (lower diagonal) P[i,j] = P_lower_diagonal[i*(i+1)/2+j] (if i>=j)
-float ekf_P_lower_diagonal[N_STATES*(N_STATES+1)/2];
-float ekf_P_lower_diagonal_new[N_STATES*(N_STATES+1)/2];
+// covariance matrix (upper diagonal) P[i,j] = P_upper_diagonal[i*(i+1)/2+j] (if i>=j)
+float ekf_P_upper_diagonal[N_STATES*(N_STATES+1)/2];
+float ekf_P_upper_diagonal_new[N_STATES*(N_STATES+1)/2];
+
+// gain matrix calculations
+float ekf_S_full[N_MEASUREMENTS*N_MEASUREMENTS];
+float ekf_S_chol[N_MEASUREMENTS*N_MEASUREMENTS];
+float ekf_S_iDiag[N_MEASUREMENTS];
+float ekf_HP[N_STATES*N_MEASUREMENTS];
+float ekf_K[N_STATES*N_MEASUREMENTS];
 
 // temporary variables
 float tmp[{{ lenTmp }}];
@@ -28,8 +36,12 @@ float tmp[{{ lenTmp }}];
 float *X = ekf_X;
 float *X_new = ekf_X_new;
 
-float *P = ekf_P_lower_diagonal;
-float *P_new = ekf_P_lower_diagonal_new;
+float *P = ekf_P_upper_diagonal;
+float *P_new = ekf_P_upper_diagonal_new;
+
+float *S = ekf_S_full;
+float *HP = ekf_HP;
+float *K = ekf_K;
 
 // renaming
 float *Q = ekf_Q;
@@ -95,7 +107,98 @@ void ekf_predict(float U[N_INPUTS], float dt) {
     P_new = swap_ptr;
 }
 
+// columns major. upper factor
+void chol_ekf(float *U, float *A, float *iDiag, int n)
+{
+    // rosetta code
+    //printf("begin S %d\n", n);
+    //for (int i = 0; i < n; i++) {
+    //    for (int j = 0; j < n; j++) {
+    //        printf("%f, ", A[i+j*n]);
+    //    }
+    //    printf("\n");
+    //}
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < (i+1); j++) {
+            float s = 0;
+            for (int k = 0; k < j; k++) {
+                s += U[i * n + k] * U[j * n + k];
+            }
+            if (i == j) {
+                //printf("%f - %f\n", A[i * n + i], s);
+                U[i * n + j] = sqrt(A[i * n + i] - s);
+                iDiag[j] = 1.f / U[i * n + j];
+            } else {
+                U[i * n + j] = iDiag[j] * (A[i * n + j] - s);
+            }
+        }
+    }
+}
+
+// column major, upper factor
+void chol_solve_ekf(float *U, float* iDiag, int n, float *b, float *x)
+{
+    // Antoine Drouin, 2007, modified
+	int j,k;
+	float t;
+
+    for(j = 0 ; j < n ; j++) { // solve Uty=b
+        t = b[j];
+        for(k = j - 1 ; k >= 0 ; k--)
+            t -= U[k + n*j] * x[k];
+        x[j] = t*iDiag[j];
+    }
+    for(j = n - 1 ; j >= 0 ; j--) { // solve Ux=y
+        t = x[j];
+        for(k = j + 1 ; k < n ; k++)
+            t -= U[j + n*k] * x[k];
+        x[j] = t*iDiag[j];
+    }
+}
+
+void normalize_quaternion(float* q) {
+    float norm = q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3];
+    if (norm > 1e-4f) {
+        float inorm = 1.f / sqrtf(norm);
+        q[0] *= inorm;
+        q[1] *= inorm;
+        q[2] *= inorm;
+        q[3] *= inorm;
+    }
+}
+
 void ekf_update(float Z[N_MEASUREMENTS]) {
+    // prepare gain calculation
+    {{ prepare_gain_code }}
+
+    // renorm quat
+    normalize_quaternion(X+6);
+
+    // we have symmetric S and PHT in col major.
+    // Solve K as K^T = invS * HP, as we have columns of HP. We solve columns of K^T, which are actually rows of K
+    chol_ekf(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS);
+    for (int i = 0; i < N_STATES; i++) {
+        float k_row[N_MEASUREMENTS];
+        chol_solve_ekf(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS, (HP+(i*N_MEASUREMENTS)), k_row);
+        for (int j = 0; j < N_MEASUREMENTS; j++) {
+            K[i + j*N_STATES] = k_row[j];
+        }
+    }
+
+    float qerror2 = 0.f;
+    for (int i = 0; i < 4; i++) {
+        qerror2 += (Z[3+i] - X[6+i])*(Z[3+i] - X[6+i]);
+    }
+
+    if (qerror2 > 2.f) {
+        // quaternion error is too big, negating the measured quaternion will
+        // give better convergence
+        for (int i = 0; i < 4; i++) {
+            Z[3+i] = -Z[3+i];
+        }
+    }
+
     // UPDATE STEP X_new, P_new = ...
     {{ update_code }}
 
@@ -103,6 +206,8 @@ void ekf_update(float Z[N_MEASUREMENTS]) {
     swap_ptr = X;
     X = X_new;
     X_new = swap_ptr;
+
+    normalize_quaternion(X+6);
 
     swap_ptr = P;
     P = P_new;

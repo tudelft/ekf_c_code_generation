@@ -8,9 +8,9 @@
 
 #include <stdint.h>
 
-#define N_STATES 15
+#define N_STATES 16
 #define N_INPUTS 6
-#define N_MEASUREMENTS 6
+#define N_MEASUREMENTS 7
 
 // set to 1 to use phi, theta, psi measurements
 float ekf_use_phi;
