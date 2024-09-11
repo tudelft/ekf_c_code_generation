@@ -77,8 +77,6 @@ from sympy.codegen.ast import CodeBlock, Assignment
 # PREDICTION STEP
 Xpred = f
 Ppred = F*P*F.T + L*Q*L.T
-for i in range(6,10):
-    Ppred[i, i] += dt*dt*1e-2
 
 # UPDATE STEP
 S = H*P*H.T + R
