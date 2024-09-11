@@ -6,12 +6,17 @@
 #include "ekf_calc.h"
 #include <math.h>
 #include <stdio.h>
+#include "qr_solve/qr_solve.h"
+
+#if (AS_N_U*AS_N_C) < 49
+#error "Preallocation in ActiveSetSolver too small for EKF. Increase AS_N_U such that (AS_N_U+AS_N_V)*AS_N_U >= 49"
+#endif
 
 float ekf_use_phi;
 float ekf_use_theta;
 float ekf_use_psi;
 
-float ekf_Q[N_INPUTS];         // Kalman filter process noise covariance matrix (diagonal)
+float ekf_Q[N_PROC_NOISES];         // Kalman filter process noise covariance matrix (diagonal)
 float ekf_R[N_MEASUREMENTS];   // Kalman filter measurement noise covariance matrix (diagonal)
 
 // state
@@ -59,7 +64,7 @@ float* ekf_get_P() {
 }
 
 void ekf_set_Q(float Q[N_INPUTS]) {
-    for (int i=0; i<N_INPUTS; i++) {
+    for (int i=0; i<N_PROC_NOISES; i++) {
         ekf_Q[i] = Q[i];
     }
 }
@@ -350,69 +355,69 @@ void ekf_predict(float U[N_INPUTS], float dt) {
 	tmp[252] = P[125] + P[126]*tmp[234] + P[127]*tmp[235] + P[128]*tmp[236] + P[129]*tmp[237] + P[130]*tmp[222] + P[131]*tmp[221] + P[132]*tmp[223];
 	tmp[253] = tmp[109]*tmp[252];
 	tmp[254] = dt*tmp[241];
-	tmp[255] = X[8]*tmp[109];
-	tmp[256] = X[9]*tmp[109];
-	tmp[257] = X[7]*tmp[109];
-	tmp[258] = dt*tmp[26];
-	tmp[259] = dt*tmp[28];
-	tmp[260] = dt*tmp[30];
-	tmp[261] = P[52]*tmp[260];
-	tmp[262] = P[112]*tmp[255] + P[127]*tmp[256] + P[34] + P[35]*tmp[258] + P[43]*tmp[259] + P[98]*tmp[257] + tmp[261];
-	tmp[263] = P[43]*tmp[258];
-	tmp[264] = P[113]*tmp[255] + P[128]*tmp[256] + P[42] + P[44]*tmp[259] + P[53]*tmp[260] + P[99]*tmp[257] + tmp[263];
-	tmp[265] = P[53]*tmp[259];
-	tmp[266] = P[100]*tmp[257] + P[114]*tmp[255] + P[129]*tmp[256] + P[51] + P[52]*tmp[258] + P[54]*tmp[260] + tmp[265];
-	tmp[267] = 0.25*tmp[173];
-	tmp[268] = Q[3]*tmp[267];
-	tmp[269] = Q[4]*tmp[267];
-	tmp[270] = Q[5]*tmp[267];
-	tmp[271] = P[118]*tmp[255];
-	tmp[272] = P[133]*tmp[256];
-	tmp[273] = P[100]*tmp[260] + P[104]*tmp[257] + P[97] + P[98]*tmp[258] + P[99]*tmp[259] + tmp[271] + tmp[272];
-	tmp[274] = P[118]*tmp[257];
-	tmp[275] = P[134]*tmp[256];
-	tmp[276] = P[111] + P[112]*tmp[258] + P[113]*tmp[259] + P[114]*tmp[260] + P[119]*tmp[255] + tmp[274] + tmp[275];
-	tmp[277] = P[133]*tmp[257];
-	tmp[278] = P[134]*tmp[255];
-	tmp[279] = P[126] + P[127]*tmp[258] + P[128]*tmp[259] + P[129]*tmp[260] + P[135]*tmp[256] + tmp[277] + tmp[278];
-	tmp[280] = P[111]*tmp[255] + P[126]*tmp[256] + P[27] + P[34]*tmp[258] + P[42]*tmp[259] + P[51]*tmp[260] + P[97]*tmp[257];
-	tmp[281] = dt*tmp[25];
-	tmp[282] = dt*tmp[29];
-	tmp[283] = X[6]*tmp[109];
-	tmp[284] = X[8]*X[9];
-	tmp[285] = dt*tmp[27];
-	tmp[286] = X[7]*X[9];
-	tmp[287] = X[8]*tmp[269];
-	tmp[288] = X[7]*X[8];
-	tmp[289] = X[6]*X[9];
-	tmp[290] = P[42]*tmp[282];
-	tmp[291] = P[111]*tmp[256] - P[126]*tmp[255] + P[27]*tmp[281] + P[34] + P[51]*tmp[259] - P[97]*tmp[283] + tmp[290];
-	tmp[292] = P[113]*tmp[256] - P[128]*tmp[255] + P[42]*tmp[281] + P[43] + P[44]*tmp[282] - P[99]*tmp[283] + tmp[265];
-	tmp[293] = P[51]*tmp[281];
-	tmp[294] = -P[100]*tmp[283] + P[114]*tmp[256] - P[129]*tmp[255] + P[52] + P[53]*tmp[282] + P[54]*tmp[259] + tmp[293];
-	tmp[295] = -P[118]*tmp[283];
-	tmp[296] = P[111]*tmp[281] + P[112] + P[113]*tmp[282] + P[114]*tmp[259] + P[119]*tmp[256] - tmp[278] + tmp[295];
-	tmp[297] = P[118]*tmp[256];
-	tmp[298] = P[133]*tmp[255];
-	tmp[299] = P[100]*tmp[259] - P[104]*tmp[283] + P[97]*tmp[281] + P[98] + P[99]*tmp[282] + tmp[297] - tmp[298];
-	tmp[300] = -P[133]*tmp[283];
-	tmp[301] = P[126]*tmp[281] + P[127] + P[128]*tmp[282] + P[129]*tmp[259] - P[135]*tmp[255] + tmp[275] + tmp[300];
-	tmp[302] = P[112]*tmp[256] - P[127]*tmp[255] + P[34]*tmp[281] + P[35] + P[43]*tmp[282] + P[52]*tmp[259] - P[98]*tmp[283];
-	tmp[303] = X[6]*X[8];
-	tmp[304] = -P[100]*tmp[256] - P[114]*tmp[283] + P[129]*tmp[257] + P[51]*tmp[285] + P[53] + P[54]*tmp[281] + tmp[261];
-	tmp[305] = -P[111]*tmp[283] + P[126]*tmp[257] + P[27]*tmp[285] + P[34]*tmp[260] + P[42] - P[97]*tmp[256] + tmp[293];
-	tmp[306] = P[34]*tmp[285];
-	tmp[307] = -P[112]*tmp[283] + P[127]*tmp[257] + P[35]*tmp[260] + P[43] + P[52]*tmp[281] - P[98]*tmp[256] + tmp[306];
-	tmp[308] = -P[134]*tmp[283];
-	tmp[309] = P[126]*tmp[285] + P[127]*tmp[260] + P[128] + P[129]*tmp[281] + P[135]*tmp[257] - tmp[272] + tmp[308];
-	tmp[310] = P[134]*tmp[257];
-	tmp[311] = P[111]*tmp[285] + P[112]*tmp[260] + P[113] + P[114]*tmp[281] - P[119]*tmp[283] - tmp[297] + tmp[310];
-	tmp[312] = P[100]*tmp[281] - P[104]*tmp[256] + P[97]*tmp[285] + P[98]*tmp[260] + P[99] + tmp[277] + tmp[295];
-	tmp[313] = -P[113]*tmp[283] + P[128]*tmp[257] + P[42]*tmp[285] + P[43]*tmp[260] + P[44] + P[53]*tmp[281] - P[99]*tmp[256];
-	tmp[314] = P[126]*tmp[282] + P[127]*tmp[285] + P[128]*tmp[258] + P[129] - P[135]*tmp[283] + tmp[298] - tmp[310];
-	tmp[315] = P[111]*tmp[282] + P[112]*tmp[285] + P[113]*tmp[258] + P[114] - P[119]*tmp[257] + tmp[271] + tmp[308];
-	tmp[316] = P[100] + P[104]*tmp[255] + P[97]*tmp[282] + P[98]*tmp[285] + P[99]*tmp[258] - tmp[274] + tmp[300];
-	tmp[317] = 0.0001*dt;
+	tmp[255] = 0.01*tmp[173];
+	tmp[256] = X[8]*tmp[109];
+	tmp[257] = X[9]*tmp[109];
+	tmp[258] = X[7]*tmp[109];
+	tmp[259] = dt*tmp[26];
+	tmp[260] = dt*tmp[28];
+	tmp[261] = dt*tmp[30];
+	tmp[262] = P[52]*tmp[261];
+	tmp[263] = P[112]*tmp[256] + P[127]*tmp[257] + P[34] + P[35]*tmp[259] + P[43]*tmp[260] + P[98]*tmp[258] + tmp[262];
+	tmp[264] = P[43]*tmp[259];
+	tmp[265] = P[113]*tmp[256] + P[128]*tmp[257] + P[42] + P[44]*tmp[260] + P[53]*tmp[261] + P[99]*tmp[258] + tmp[264];
+	tmp[266] = P[53]*tmp[260];
+	tmp[267] = P[100]*tmp[258] + P[114]*tmp[256] + P[129]*tmp[257] + P[51] + P[52]*tmp[259] + P[54]*tmp[261] + tmp[266];
+	tmp[268] = 0.25*tmp[173];
+	tmp[269] = Q[3]*tmp[268];
+	tmp[270] = Q[4]*tmp[268];
+	tmp[271] = Q[5]*tmp[268];
+	tmp[272] = P[118]*tmp[256];
+	tmp[273] = P[133]*tmp[257];
+	tmp[274] = P[100]*tmp[261] + P[104]*tmp[258] + P[97] + P[98]*tmp[259] + P[99]*tmp[260] + tmp[272] + tmp[273];
+	tmp[275] = P[118]*tmp[258];
+	tmp[276] = P[134]*tmp[257];
+	tmp[277] = P[111] + P[112]*tmp[259] + P[113]*tmp[260] + P[114]*tmp[261] + P[119]*tmp[256] + tmp[275] + tmp[276];
+	tmp[278] = P[133]*tmp[258];
+	tmp[279] = P[134]*tmp[256];
+	tmp[280] = P[126] + P[127]*tmp[259] + P[128]*tmp[260] + P[129]*tmp[261] + P[135]*tmp[257] + tmp[278] + tmp[279];
+	tmp[281] = P[111]*tmp[256] + P[126]*tmp[257] + P[27] + P[34]*tmp[259] + P[42]*tmp[260] + P[51]*tmp[261] + P[97]*tmp[258];
+	tmp[282] = dt*tmp[25];
+	tmp[283] = dt*tmp[29];
+	tmp[284] = X[6]*tmp[109];
+	tmp[285] = X[8]*X[9];
+	tmp[286] = dt*tmp[27];
+	tmp[287] = X[7]*X[9];
+	tmp[288] = X[8]*tmp[270];
+	tmp[289] = X[7]*X[8];
+	tmp[290] = X[6]*X[9];
+	tmp[291] = P[42]*tmp[283];
+	tmp[292] = P[111]*tmp[257] - P[126]*tmp[256] + P[27]*tmp[282] + P[34] + P[51]*tmp[260] - P[97]*tmp[284] + tmp[291];
+	tmp[293] = P[113]*tmp[257] - P[128]*tmp[256] + P[42]*tmp[282] + P[43] + P[44]*tmp[283] - P[99]*tmp[284] + tmp[266];
+	tmp[294] = P[51]*tmp[282];
+	tmp[295] = -P[100]*tmp[284] + P[114]*tmp[257] - P[129]*tmp[256] + P[52] + P[53]*tmp[283] + P[54]*tmp[260] + tmp[294];
+	tmp[296] = -P[118]*tmp[284];
+	tmp[297] = P[111]*tmp[282] + P[112] + P[113]*tmp[283] + P[114]*tmp[260] + P[119]*tmp[257] - tmp[279] + tmp[296];
+	tmp[298] = P[118]*tmp[257];
+	tmp[299] = P[133]*tmp[256];
+	tmp[300] = P[100]*tmp[260] - P[104]*tmp[284] + P[97]*tmp[282] + P[98] + P[99]*tmp[283] + tmp[298] - tmp[299];
+	tmp[301] = -P[133]*tmp[284];
+	tmp[302] = P[126]*tmp[282] + P[127] + P[128]*tmp[283] + P[129]*tmp[260] - P[135]*tmp[256] + tmp[276] + tmp[301];
+	tmp[303] = P[112]*tmp[257] - P[127]*tmp[256] + P[34]*tmp[282] + P[35] + P[43]*tmp[283] + P[52]*tmp[260] - P[98]*tmp[284];
+	tmp[304] = X[6]*X[8];
+	tmp[305] = -P[100]*tmp[257] - P[114]*tmp[284] + P[129]*tmp[258] + P[51]*tmp[286] + P[53] + P[54]*tmp[282] + tmp[262];
+	tmp[306] = -P[111]*tmp[284] + P[126]*tmp[258] + P[27]*tmp[286] + P[34]*tmp[261] + P[42] - P[97]*tmp[257] + tmp[294];
+	tmp[307] = P[34]*tmp[286];
+	tmp[308] = -P[112]*tmp[284] + P[127]*tmp[258] + P[35]*tmp[261] + P[43] + P[52]*tmp[282] - P[98]*tmp[257] + tmp[307];
+	tmp[309] = -P[134]*tmp[284];
+	tmp[310] = P[126]*tmp[286] + P[127]*tmp[261] + P[128] + P[129]*tmp[282] + P[135]*tmp[258] - tmp[273] + tmp[309];
+	tmp[311] = P[134]*tmp[258];
+	tmp[312] = P[111]*tmp[286] + P[112]*tmp[261] + P[113] + P[114]*tmp[282] - P[119]*tmp[284] - tmp[298] + tmp[311];
+	tmp[313] = P[100]*tmp[282] - P[104]*tmp[257] + P[97]*tmp[286] + P[98]*tmp[261] + P[99] + tmp[278] + tmp[296];
+	tmp[314] = -P[113]*tmp[284] + P[128]*tmp[258] + P[42]*tmp[286] + P[43]*tmp[261] + P[44] + P[53]*tmp[282] - P[99]*tmp[257];
+	tmp[315] = P[126]*tmp[283] + P[127]*tmp[286] + P[128]*tmp[259] + P[129] - P[135]*tmp[284] + tmp[299] - tmp[311];
+	tmp[316] = P[111]*tmp[283] + P[112]*tmp[286] + P[113]*tmp[259] + P[114] - P[119]*tmp[258] + tmp[272] + tmp[309];
+	tmp[317] = P[100] + P[104]*tmp[256] + P[97]*tmp[283] + P[98]*tmp[286] + P[99]*tmp[259] - tmp[275] + tmp[301];
 	X_new[0] = X[0] + X[3]*dt;
 	X_new[1] = X[1] + X[4]*dt;
 	X_new[2] = X[2] + X[5]*dt;
@@ -510,61 +515,61 @@ void ekf_predict(float U[N_INPUTS], float dt) {
 	P_new[96] = tmp[248];
 	P_new[110] = tmp[250];
 	P_new[125] = tmp[252];
-	P_new[27] = tmp[255]*tmp[276] + tmp[256]*tmp[279] + tmp[257]*tmp[273] + tmp[258]*tmp[262] + tmp[259]*tmp[264] + tmp[260]*tmp[266] + tmp[268]*tmp[63] + tmp[269]*tmp[64] + tmp[270]*tmp[67] + tmp[280];
-	P_new[34] = -tmp[255]*tmp[279] + tmp[256]*tmp[276] + tmp[259]*tmp[266] + tmp[262] + tmp[264]*tmp[282] - tmp[268]*tmp[97] + tmp[269]*tmp[284] - tmp[270]*tmp[284] - tmp[273]*tmp[283] + tmp[280]*tmp[281];
-	P_new[42] = -X[6]*tmp[287] - tmp[256]*tmp[273] + tmp[257]*tmp[279] + tmp[260]*tmp[262] + tmp[264] + tmp[266]*tmp[281] - tmp[268]*tmp[286] + tmp[270]*tmp[286] - tmp[276]*tmp[283] + tmp[280]*tmp[285];
-	P_new[51] = -X[7]*tmp[287] + tmp[255]*tmp[273] - tmp[257]*tmp[276] + tmp[258]*tmp[264] + tmp[262]*tmp[285] + tmp[266] + tmp[268]*tmp[288] - tmp[270]*tmp[289] - tmp[279]*tmp[283] + tmp[280]*tmp[282];
-	P_new[61] = P[101]*tmp[257] + P[115]*tmp[255] + P[130]*tmp[256] + P[61] + P[62]*tmp[258] + P[63]*tmp[259] + P[64]*tmp[260];
-	P_new[72] = P[102]*tmp[257] + P[116]*tmp[255] + P[131]*tmp[256] + P[72] + P[73]*tmp[258] + P[74]*tmp[259] + P[75]*tmp[260];
-	P_new[84] = P[103]*tmp[257] + P[117]*tmp[255] + P[132]*tmp[256] + P[84] + P[85]*tmp[258] + P[86]*tmp[259] + P[87]*tmp[260];
-	P_new[97] = tmp[273];
-	P_new[111] = tmp[276];
-	P_new[126] = tmp[279];
-	P_new[35] = -tmp[255]*tmp[301] + tmp[256]*tmp[296] + tmp[259]*tmp[294] + tmp[268]*tmp[66] + tmp[269]*tmp[67] + tmp[270]*tmp[64] + tmp[281]*tmp[291] + tmp[282]*tmp[292] - tmp[283]*tmp[299] + tmp[302];
-	P_new[43] = -tmp[256]*tmp[299] + tmp[257]*tmp[301] + tmp[260]*tmp[302] + tmp[268]*tmp[289] - tmp[269]*tmp[289] - tmp[270]*tmp[288] + tmp[281]*tmp[294] - tmp[283]*tmp[296] + tmp[285]*tmp[291] + tmp[292];
-	P_new[52] = tmp[255]*tmp[299] - tmp[257]*tmp[296] + tmp[258]*tmp[292] - tmp[268]*tmp[303] - tmp[269]*tmp[286] + tmp[270]*tmp[303] + tmp[282]*tmp[291] - tmp[283]*tmp[301] + tmp[285]*tmp[302] + tmp[294];
-	P_new[62] = -P[101]*tmp[283] + P[115]*tmp[256] - P[130]*tmp[255] + P[61]*tmp[281] + P[62] + P[63]*tmp[282] + P[64]*tmp[259];
-	P_new[73] = -P[102]*tmp[283] + P[116]*tmp[256] - P[131]*tmp[255] + P[72]*tmp[281] + P[73] + P[74]*tmp[282] + P[75]*tmp[259];
-	P_new[85] = -P[103]*tmp[283] + P[117]*tmp[256] - P[132]*tmp[255] + P[84]*tmp[281] + P[85] + P[86]*tmp[282] + P[87]*tmp[259];
-	P_new[98] = tmp[299];
-	P_new[112] = tmp[296];
-	P_new[127] = tmp[301];
-	P_new[44] = -tmp[256]*tmp[312] + tmp[257]*tmp[309] + tmp[260]*tmp[307] + tmp[268]*tmp[67] + tmp[269]*tmp[66] + tmp[270]*tmp[63] + tmp[281]*tmp[304] - tmp[283]*tmp[311] + tmp[285]*tmp[305] + tmp[313];
-	P_new[53] = tmp[255]*tmp[312] - tmp[257]*tmp[311] + tmp[258]*tmp[313] - tmp[268]*tmp[284] + tmp[269]*tmp[97] - tmp[270]*tmp[97] + tmp[282]*tmp[305] - tmp[283]*tmp[309] + tmp[285]*tmp[307] + tmp[304];
-	P_new[63] = -P[101]*tmp[256] - P[115]*tmp[283] + P[130]*tmp[257] + P[61]*tmp[285] + P[62]*tmp[260] + P[63] + P[64]*tmp[281];
-	P_new[74] = -P[102]*tmp[256] - P[116]*tmp[283] + P[131]*tmp[257] + P[72]*tmp[285] + P[73]*tmp[260] + P[74] + P[75]*tmp[281];
-	P_new[86] = -P[103]*tmp[256] - P[117]*tmp[283] + P[132]*tmp[257] + P[84]*tmp[285] + P[85]*tmp[260] + P[86] + P[87]*tmp[281];
-	P_new[99] = tmp[312];
-	P_new[113] = tmp[311];
-	P_new[128] = tmp[309];
-	P_new[54] = P[100]*tmp[255] - P[114]*tmp[257] - P[129]*tmp[283] + P[51]*tmp[282] + P[52]*tmp[285] + P[53]*tmp[258] + P[54] + tmp[255]*tmp[316] - tmp[257]*tmp[315] + tmp[258]*(-P[113]*tmp[257] - P[128]*tmp[283] + P[43]*tmp[285] + P[44]*tmp[258] + P[53] + P[99]*tmp[255] + tmp[290]) + tmp[268]*tmp[64] + tmp[269]*tmp[63] + tmp[270]*tmp[66] + tmp[282]*(-P[111]*tmp[257] - P[126]*tmp[283] + P[27]*tmp[282] + P[42]*tmp[258] + P[51] + P[97]*tmp[255] + tmp[306]) - tmp[283]*tmp[314] + tmp[285]*(-P[112]*tmp[257] - P[127]*tmp[283] + P[34]*tmp[282] + P[35]*tmp[285] + P[52] + P[98]*tmp[255] + tmp[263]);
-	P_new[64] = P[101]*tmp[255] - P[115]*tmp[257] - P[130]*tmp[283] + P[61]*tmp[282] + P[62]*tmp[285] + P[63]*tmp[258] + P[64];
-	P_new[75] = P[102]*tmp[255] - P[116]*tmp[257] - P[131]*tmp[283] + P[72]*tmp[282] + P[73]*tmp[285] + P[74]*tmp[258] + P[75];
-	P_new[87] = P[103]*tmp[255] - P[117]*tmp[257] - P[132]*tmp[283] + P[84]*tmp[282] + P[85]*tmp[285] + P[86]*tmp[258] + P[87];
-	P_new[100] = tmp[316];
-	P_new[114] = tmp[315];
-	P_new[129] = tmp[314];
-	P_new[65] = P[65] + tmp[317];
+	P_new[27] = tmp[255] + tmp[256]*tmp[277] + tmp[257]*tmp[280] + tmp[258]*tmp[274] + tmp[259]*tmp[263] + tmp[260]*tmp[265] + tmp[261]*tmp[267] + tmp[269]*tmp[63] + tmp[270]*tmp[64] + tmp[271]*tmp[67] + tmp[281];
+	P_new[34] = -tmp[256]*tmp[280] + tmp[257]*tmp[277] + tmp[260]*tmp[267] + tmp[263] + tmp[265]*tmp[283] - tmp[269]*tmp[97] + tmp[270]*tmp[285] - tmp[271]*tmp[285] - tmp[274]*tmp[284] + tmp[281]*tmp[282];
+	P_new[42] = -X[6]*tmp[288] - tmp[257]*tmp[274] + tmp[258]*tmp[280] + tmp[261]*tmp[263] + tmp[265] + tmp[267]*tmp[282] - tmp[269]*tmp[287] + tmp[271]*tmp[287] - tmp[277]*tmp[284] + tmp[281]*tmp[286];
+	P_new[51] = -X[7]*tmp[288] + tmp[256]*tmp[274] - tmp[258]*tmp[277] + tmp[259]*tmp[265] + tmp[263]*tmp[286] + tmp[267] + tmp[269]*tmp[289] - tmp[271]*tmp[290] - tmp[280]*tmp[284] + tmp[281]*tmp[283];
+	P_new[61] = P[101]*tmp[258] + P[115]*tmp[256] + P[130]*tmp[257] + P[61] + P[62]*tmp[259] + P[63]*tmp[260] + P[64]*tmp[261];
+	P_new[72] = P[102]*tmp[258] + P[116]*tmp[256] + P[131]*tmp[257] + P[72] + P[73]*tmp[259] + P[74]*tmp[260] + P[75]*tmp[261];
+	P_new[84] = P[103]*tmp[258] + P[117]*tmp[256] + P[132]*tmp[257] + P[84] + P[85]*tmp[259] + P[86]*tmp[260] + P[87]*tmp[261];
+	P_new[97] = tmp[274];
+	P_new[111] = tmp[277];
+	P_new[126] = tmp[280];
+	P_new[35] = tmp[255] - tmp[256]*tmp[302] + tmp[257]*tmp[297] + tmp[260]*tmp[295] + tmp[269]*tmp[66] + tmp[270]*tmp[67] + tmp[271]*tmp[64] + tmp[282]*tmp[292] + tmp[283]*tmp[293] - tmp[284]*tmp[300] + tmp[303];
+	P_new[43] = -tmp[257]*tmp[300] + tmp[258]*tmp[302] + tmp[261]*tmp[303] + tmp[269]*tmp[290] - tmp[270]*tmp[290] - tmp[271]*tmp[289] + tmp[282]*tmp[295] - tmp[284]*tmp[297] + tmp[286]*tmp[292] + tmp[293];
+	P_new[52] = tmp[256]*tmp[300] - tmp[258]*tmp[297] + tmp[259]*tmp[293] - tmp[269]*tmp[304] - tmp[270]*tmp[287] + tmp[271]*tmp[304] + tmp[283]*tmp[292] - tmp[284]*tmp[302] + tmp[286]*tmp[303] + tmp[295];
+	P_new[62] = -P[101]*tmp[284] + P[115]*tmp[257] - P[130]*tmp[256] + P[61]*tmp[282] + P[62] + P[63]*tmp[283] + P[64]*tmp[260];
+	P_new[73] = -P[102]*tmp[284] + P[116]*tmp[257] - P[131]*tmp[256] + P[72]*tmp[282] + P[73] + P[74]*tmp[283] + P[75]*tmp[260];
+	P_new[85] = -P[103]*tmp[284] + P[117]*tmp[257] - P[132]*tmp[256] + P[84]*tmp[282] + P[85] + P[86]*tmp[283] + P[87]*tmp[260];
+	P_new[98] = tmp[300];
+	P_new[112] = tmp[297];
+	P_new[127] = tmp[302];
+	P_new[44] = tmp[255] - tmp[257]*tmp[313] + tmp[258]*tmp[310] + tmp[261]*tmp[308] + tmp[269]*tmp[67] + tmp[270]*tmp[66] + tmp[271]*tmp[63] + tmp[282]*tmp[305] - tmp[284]*tmp[312] + tmp[286]*tmp[306] + tmp[314];
+	P_new[53] = tmp[256]*tmp[313] - tmp[258]*tmp[312] + tmp[259]*tmp[314] - tmp[269]*tmp[285] + tmp[270]*tmp[97] - tmp[271]*tmp[97] + tmp[283]*tmp[306] - tmp[284]*tmp[310] + tmp[286]*tmp[308] + tmp[305];
+	P_new[63] = -P[101]*tmp[257] - P[115]*tmp[284] + P[130]*tmp[258] + P[61]*tmp[286] + P[62]*tmp[261] + P[63] + P[64]*tmp[282];
+	P_new[74] = -P[102]*tmp[257] - P[116]*tmp[284] + P[131]*tmp[258] + P[72]*tmp[286] + P[73]*tmp[261] + P[74] + P[75]*tmp[282];
+	P_new[86] = -P[103]*tmp[257] - P[117]*tmp[284] + P[132]*tmp[258] + P[84]*tmp[286] + P[85]*tmp[261] + P[86] + P[87]*tmp[282];
+	P_new[99] = tmp[313];
+	P_new[113] = tmp[312];
+	P_new[128] = tmp[310];
+	P_new[54] = P[100]*tmp[256] - P[114]*tmp[258] - P[129]*tmp[284] + P[51]*tmp[283] + P[52]*tmp[286] + P[53]*tmp[259] + P[54] + tmp[255] + tmp[256]*tmp[317] - tmp[258]*tmp[316] + tmp[259]*(-P[113]*tmp[258] - P[128]*tmp[284] + P[43]*tmp[286] + P[44]*tmp[259] + P[53] + P[99]*tmp[256] + tmp[291]) + tmp[269]*tmp[64] + tmp[270]*tmp[63] + tmp[271]*tmp[66] + tmp[283]*(-P[111]*tmp[258] - P[126]*tmp[284] + P[27]*tmp[283] + P[42]*tmp[259] + P[51] + P[97]*tmp[256] + tmp[307]) - tmp[284]*tmp[315] + tmp[286]*(-P[112]*tmp[258] - P[127]*tmp[284] + P[34]*tmp[283] + P[35]*tmp[286] + P[52] + P[98]*tmp[256] + tmp[264]);
+	P_new[64] = P[101]*tmp[256] - P[115]*tmp[258] - P[130]*tmp[284] + P[61]*tmp[283] + P[62]*tmp[286] + P[63]*tmp[259] + P[64];
+	P_new[75] = P[102]*tmp[256] - P[116]*tmp[258] - P[131]*tmp[284] + P[72]*tmp[283] + P[73]*tmp[286] + P[74]*tmp[259] + P[75];
+	P_new[87] = P[103]*tmp[256] - P[117]*tmp[258] - P[132]*tmp[284] + P[84]*tmp[283] + P[85]*tmp[286] + P[86]*tmp[259] + P[87];
+	P_new[100] = tmp[317];
+	P_new[114] = tmp[316];
+	P_new[129] = tmp[315];
+	P_new[65] = P[65] + Q[6]*tmp[173];
 	P_new[76] = P[76];
 	P_new[88] = P[88];
 	P_new[101] = P[101];
 	P_new[115] = P[115];
 	P_new[130] = P[130];
-	P_new[77] = P[77] + tmp[317];
+	P_new[77] = P[77] + Q[7]*tmp[173];
 	P_new[89] = P[89];
 	P_new[102] = P[102];
 	P_new[116] = P[116];
 	P_new[131] = P[131];
-	P_new[90] = P[90] + tmp[317];
+	P_new[90] = P[90] + Q[8]*tmp[173];
 	P_new[103] = P[103];
 	P_new[117] = P[117];
 	P_new[132] = P[132];
-	P_new[104] = P[104] + tmp[317];
+	P_new[104] = P[104] + Q[9]*tmp[173];
 	P_new[118] = P[118];
 	P_new[133] = P[133];
-	P_new[119] = P[119] + tmp[317];
+	P_new[119] = P[119] + Q[10]*tmp[173];
 	P_new[134] = P[134];
-	P_new[135] = P[135] + tmp[317];
+	P_new[135] = P[135] + Q[11]*tmp[173];
 
     // swap X, X_new and P, P_new pointers
     swap_ptr = X;
@@ -805,11 +810,12 @@ void ekf_update(float Z[N_MEASUREMENTS]) {
     normalize_quaternion(X+6);
 
     // we have symmetric S and PHT in col major.
-    // Solve K as K^T = invS * HP, as we have columns of HP. We solve columns of K^T, which are actually rows of K
-    chol_ekf(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS);
+    // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
+    //chol_ekf(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS);
     for (int i = 0; i < N_STATES; i++) {
         float k_row[N_MEASUREMENTS];
-        chol_solve_ekf(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS, (HP+(i*N_MEASUREMENTS)), k_row);
+        //chol_solve_ekf(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS, (HP+(i*N_MEASUREMENTS)), k_row);
+        qr_solve( N_MEASUREMENTS, N_MEASUREMENTS, S, (HP+(i*N_MEASUREMENTS)), k_row );
         for (int j = 0; j < N_MEASUREMENTS; j++) {
             K[i + j*N_STATES] = k_row[j];
         }

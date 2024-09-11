@@ -6,12 +6,17 @@
 #include "ekf_calc.h"
 #include <math.h>
 #include <stdio.h>
+#include "qr_solve/qr_solve.h"
+
+#if (AS_N_U*AS_N_C) < 49
+#error "Preallocation in ActiveSetSolver too small for EKF. Increase AS_N_U such that (AS_N_U+AS_N_V)*AS_N_U >= 49"
+#endif
 
 float ekf_use_phi;
 float ekf_use_theta;
 float ekf_use_psi;
 
-float ekf_Q[N_INPUTS];         // Kalman filter process noise covariance matrix (diagonal)
+float ekf_Q[N_PROC_NOISES];         // Kalman filter process noise covariance matrix (diagonal)
 float ekf_R[N_MEASUREMENTS];   // Kalman filter measurement noise covariance matrix (diagonal)
 
 // state
@@ -59,7 +64,7 @@ float* ekf_get_P() {
 }
 
 void ekf_set_Q(float Q[N_INPUTS]) {
-    for (int i=0; i<N_INPUTS; i++) {
+    for (int i=0; i<N_PROC_NOISES; i++) {
         ekf_Q[i] = Q[i];
     }
 }
@@ -176,11 +181,12 @@ void ekf_update(float Z[N_MEASUREMENTS]) {
     normalize_quaternion(X+6);
 
     // we have symmetric S and PHT in col major.
-    // Solve K as K^T = invS * HP, as we have columns of HP. We solve columns of K^T, which are actually rows of K
+    // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
     chol_ekf(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS);
     for (int i = 0; i < N_STATES; i++) {
         float k_row[N_MEASUREMENTS];
         chol_solve_ekf(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS, (HP+(i*N_MEASUREMENTS)), k_row);
+        //qr_solve( N_MEASUREMENTS, N_MEASUREMENTS, S, (HP+(i*N_MEASUREMENTS)), k_row );
         for (int j = 0; j < N_MEASUREMENTS; j++) {
             K[i + j*N_STATES] = k_row[j];
         }

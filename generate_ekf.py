@@ -3,7 +3,7 @@ from sympy import *
 # states, inputs, and process noise
 X=Matrix(symbols('X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8] X[9] X[10] X[11] X[12] X[13] X[14] X[15]'))
 U=Matrix(symbols('U[0] U[1] U[2] U[3] U[4] U[5]'))
-W=Matrix(symbols('W[0] W[1] W[2] W[3] W[4] W[5]'))
+W=Matrix(symbols('W[0] W[1] W[2] W[3] W[4] W[5] W[6] W[7] W[8] W[9] W[10] W[11]'))
 
 # time step
 dt=symbols('dt')
@@ -12,7 +12,7 @@ dt=symbols('dt')
 g = 9.81
 x,y,z,vx,vy,vz,qw,qx,qy,qz,lx,ly,lz,lp,lq,lr = X
 ax,ay,az,p,q,r = U
-wx,wy,wz,wp,wq,wr = W
+wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr = W
 
 quat = Quaternion(qw, qx, qy, qz, norm=1) # does norm 1 automatically renormaize?
 a_NED = Quaternion.rotate_point([ax-lx-wx,ay-ly-wy,az-lz-wz], quat)
@@ -38,7 +38,8 @@ f_continuous = Matrix([
     q_dot[1],
     q_dot[2],
     q_dot[3],
-    0,0,0,0,0,0
+    #0,0,0,0,0,0
+    wbx, wby, wbz, wbp, wbq, wbr
 ])
 
 # discretized dynamics:
@@ -76,8 +77,8 @@ from sympy.codegen.ast import CodeBlock, Assignment
 # PREDICTION STEP
 Xpred = f
 Ppred = F*P*F.T + L*Q*L.T
-for i in range(10,16):
-    Ppred[i,i] += dt*1e-4
+for i in range(6,10):
+    Ppred[i, i] += dt*dt*1e-2
 
 # UPDATE STEP
 S = H*P*H.T + R
@@ -188,6 +189,7 @@ from jinja2 import Environment, FileSystemLoader
 # set data used in templates
 data = {}
 data['lenX'] = len(X)
+data['lenQ'] = len(W)
 data['lenU'] = len(U)
 data['lenh'] = len(h)
 data['lenTmp'] = max(prediction_code_N_tmps, s_code_N_tmps, update_code_N_tmps)

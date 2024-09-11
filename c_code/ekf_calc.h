@@ -10,12 +10,8 @@
 
 #define N_STATES 16
 #define N_INPUTS 6
+#define N_PROC_NOISES 12
 #define N_MEASUREMENTS 7
-
-// set to 1 to use phi, theta, psi measurements
-float ekf_use_phi;
-float ekf_use_theta;
-float ekf_use_psi;
 
 // getters
 float* ekf_get_X();     // get state vector
