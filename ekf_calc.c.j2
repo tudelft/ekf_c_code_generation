@@ -7,14 +7,13 @@
 #include <math.h>
 #include <stdio.h>
 #include "qr_solve/qr_solve.h"
+#include <stdbool.h>
 
 #if (AS_N_U*AS_N_C) < 49
 #error "Preallocation in ActiveSetSolver too small for EKF. Increase AS_N_U such that (AS_N_U+AS_N_V)*AS_N_U >= 49"
 #endif
 
-float ekf_use_phi;
-float ekf_use_theta;
-float ekf_use_psi;
+bool ekf_use_quat;
 
 float ekf_Q[N_PROC_NOISES];         // Kalman filter process noise covariance matrix (diagonal)
 float ekf_R[N_MEASUREMENTS];   // Kalman filter measurement noise covariance matrix (diagonal)

@@ -14,18 +14,21 @@ x,y,z,vx,vy,vz,qw,qx,qy,qz,lx,ly,lz,lp,lq,lr = X
 ax,ay,az,p,q,r = U
 wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr = W
 
-quat = Quaternion(qw, qx, qy, qz, norm=1) # does norm 1 automatically renormaize?
+quat = Quaternion(qw, qx, qy, qz) # does norm 1 automatically renormaize?
 a_NED = Quaternion.rotate_point([ax-lx-wx,ay-ly-wy,az-lz-wz], quat)
 
 # https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
-pqr_hat = Matrix([p-lp-wp, q-lq-wq, r-lr-wr])
-Omega_pqr = Matrix([
-    [0,          -pqr_hat[0], -pqr_hat[1], -pqr_hat[2]],
-    [pqr_hat[0],  0,           pqr_hat[2], -pqr_hat[1]],
-    [pqr_hat[1], -pqr_hat[2],  0,          +pqr_hat[0]],
-    [pqr_hat[2], +pqr_hat[1], -pqr_hat[0], 0],
-])
-q_dot = 0.5*Omega_pqr * Matrix([quat.a, quat.b, quat.c, quat.d])
+#pqr_hat = Matrix([p-lp-wp, q-lq-wq, r-lr-wr])
+#Omega_pqr = Matrix([
+#    [0,          -pqr_hat[0], -pqr_hat[1], -pqr_hat[2]],
+#    [pqr_hat[0],  0,           pqr_hat[2], -pqr_hat[1]],
+#    [pqr_hat[1], -pqr_hat[2],  0,          +pqr_hat[0]],
+#    [pqr_hat[2], +pqr_hat[1], -pqr_hat[0], 0],
+#])
+#q_dot = 0.5*Omega_pqr * Matrix([quat.a, quat.b, quat.c, quat.d])
+
+pqr_hat = Quaternion(0, p-lp-wp, q-lq-wq, r-lr-wr)
+q_dot = 0.5 * quat * pqr_hat
 
 f_continuous = Matrix([
     vx,
@@ -34,10 +37,10 @@ f_continuous = Matrix([
     a_NED[0],
     a_NED[1],
     a_NED[2] + g,
-    q_dot[0],
-    q_dot[1],
-    q_dot[2],
-    q_dot[3],
+    q_dot.a,
+    q_dot.b,
+    q_dot.c,
+    q_dot.d,
     #0,0,0,0,0,0
     wbx, wby, wbz, wbp, wbq, wbr
 ])
@@ -46,7 +49,8 @@ f_continuous = Matrix([
 f = X + f_continuous*dt
 
 # output function (measurement model):
-h = Matrix([x,y,z,qw,qx,qy,qz])
+use_quat = symbols('ekf_use_quat')
+h = Matrix([x,y,z,use_quat*qw,use_quat*qx,use_quat*qy,use_quat*qz])
 
 # matrices:
 F = f.jacobian(X)
