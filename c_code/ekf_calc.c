@@ -6,14 +6,10 @@
 #include "ekf_calc.h"
 #include <math.h>
 #include <stdio.h>
-#include "qr_solve/qr_solve.h"
+#include "common/maths.h"
 #include <stdbool.h>
 
-#if (AS_N_U*AS_N_C) < 49
-#error "Preallocation in ActiveSetSolver too small for EKF. Increase AS_N_U such that (AS_N_U+AS_N_V)*AS_N_U >= 49"
-#endif
-
-bool ekf_use_quat;
+bool ekf_use_quat = false;
 
 float ekf_Q[N_PROC_NOISES];         // Kalman filter process noise covariance matrix (diagonal)
 float ekf_R[N_MEASUREMENTS];   // Kalman filter measurement noise covariance matrix (diagonal)
@@ -633,55 +629,6 @@ void ekf_predict(float U[N_INPUTS], float dt) {
     P_new = swap_ptr;
 }
 
-// columns major. upper factor
-void chol_ekf(float *U, float *A, float *iDiag, int n)
-{
-    // rosetta code
-    //printf("begin S %d\n", n);
-    //for (int i = 0; i < n; i++) {
-    //    for (int j = 0; j < n; j++) {
-    //        printf("%f, ", A[i+j*n]);
-    //    }
-    //    printf("\n");
-    //}
-
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < (i+1); j++) {
-            float s = 0;
-            for (int k = 0; k < j; k++) {
-                s += U[i * n + k] * U[j * n + k];
-            }
-            if (i == j) {
-                //printf("%f - %f\n", A[i * n + i], s);
-                U[i * n + j] = sqrt(A[i * n + i] - s);
-                iDiag[j] = 1.f / U[i * n + j];
-            } else {
-                U[i * n + j] = iDiag[j] * (A[i * n + j] - s);
-            }
-        }
-    }
-}
-
-// column major, upper factor
-void chol_solve_ekf(float *U, float* iDiag, int n, float *b, float *x)
-{
-    // Antoine Drouin, 2007, modified
-	int j,k;
-	float t;
-
-    for(j = 0 ; j < n ; j++) { // solve Uty=b
-        t = b[j];
-        for(k = j - 1 ; k >= 0 ; k--)
-            t -= U[k + n*j] * x[k];
-        x[j] = t*iDiag[j];
-    }
-    for(j = n - 1 ; j >= 0 ; j--) { // solve Ux=y
-        t = x[j];
-        for(k = j + 1 ; k < n ; k++)
-            t -= U[j + n*k] * x[k];
-        x[j] = t*iDiag[j];
-    }
-}
 
 void normalize_quaternion(float* q) {
     float norm = q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3];
@@ -888,13 +835,35 @@ void ekf_update(float Z[N_MEASUREMENTS]) {
 
     // we have symmetric S and PHT in col major.
     // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
-    chol_ekf(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS);
-    for (int i = 0; i < N_STATES; i++) {
-        float k_row[N_MEASUREMENTS];
-        chol_solve_ekf(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS, (HP+(i*N_MEASUREMENTS)), k_row);
-        //qr_solve( N_MEASUREMENTS, N_MEASUREMENTS, S, (HP+(i*N_MEASUREMENTS)), k_row );
-        for (int j = 0; j < N_MEASUREMENTS; j++) {
-            K[i + j*N_STATES] = k_row[j];
+    if (!ekf_use_quat) {
+        // 3 state kalman update, yay
+        float S_small[3*3];
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                S_small[i + j*3] = S[i + j*N_MEASUREMENTS];
+            }
+        }
+        float k_row[3];
+        float S_small_chol[3*3];
+        chol(S_small_chol, S_small, ekf_S_iDiag, 3);
+        for (int i = 0; i < N_STATES; i++) {
+            chol_solve(S_small_chol, ekf_S_iDiag, 3, (HP+(i*N_MEASUREMENTS)), k_row);
+            for (int j = 0; j < 3; j++) {
+                K[i + j*N_STATES] = k_row[j];
+            }
+            for (int j = 3; j < N_MEASUREMENTS; j++) {
+                K[i + j*N_STATES] = 0.f;
+            }
+        }
+    } else {
+        // full state kalman update, meh
+        chol(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS);
+        for (int i = 0; i < N_STATES; i++) {
+            float k_row[N_MEASUREMENTS];
+            chol_solve(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS, (HP+(i*N_MEASUREMENTS)), k_row);
+            for (int j = 0; j < N_MEASUREMENTS; j++) {
+                K[i + j*N_STATES] = k_row[j];
+            }
         }
     }
 
