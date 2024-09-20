@@ -1,3 +1,5 @@
 *.npz
 *.csv
 /c_code
+flight_data
+*.pyc
