@@ -1,5 +1,6 @@
 *.npz
 *.csv
-/c_code
-flight_data
 *.pyc
+c_code
+c_code2
+flight_data

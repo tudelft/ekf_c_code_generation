@@ -17,6 +17,11 @@ float ekf_use_phi;
 float ekf_use_theta;
 float ekf_use_psi;
 
+// kx, ky, kw
+float kx;
+float ky;
+float kw;
+
 // getters
 float* ekf_get_X();     // get state vector
 float* ekf_get_P();     // get covariance matrix (lower diagonal)
