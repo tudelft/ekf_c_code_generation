@@ -48,28 +48,36 @@ f_continuous = Matrix([
 # discretized dynamics:
 f = X + f_continuous*dt
 
-# output function (measurement model):
+# measurement model MOCAP:
 use_quat = symbols('ekf_use_quat')
-h = Matrix([x,y,z,use_quat*qw,use_quat*qx,use_quat*qy,use_quat*qz])
+h_mocap = Matrix([x,y,z,use_quat*qw,use_quat*qx,use_quat*qy,use_quat*qz])
+
+# output function BODY V (XY)
+quat_inv = Quaternion(qw, -qx, -qy, -qz)
+v_body = Quaternion.rotate_point([vx,vy,vz], quat_inv)
+h_vbody = Matrix([v_body[0], v_body[1]])
 
 # matrices:
 F = f.jacobian(X)
 L = f.jacobian(W)
-H = h.jacobian(X)
+H_mocap = h_mocap.jacobian(X)
+H_vbody = h_vbody.jacobian(X)
 
 # substitute W with 0
 f = f.subs([(w,0) for w in W])
 F = F.subs([(w,0) for w in W])
 L = L.subs([(w,0) for w in W])
-H = H.subs([(w,0) for w in W])
+H_mocap = H_mocap.subs([(w,0) for w in W])
+H_vbody = H_vbody.subs([(w,0) for w in W])
 
 # extra matrices
 symmetric_indexing = lambda i,j: int(j*(j+1)/2+i) if j>=i else int(i*(i+1)/2+j)
 P = Matrix([[symbols(f'P[{symmetric_indexing(i,j)}]') for j in range(len(X))] for i in range(len(X))])
 Q = Matrix([[symbols(f'Q[{i}]') if i==j else '0' for j in range(len(W))] for i in range(len(W))])
-R = Matrix([[symbols(f'R[{i}]') if i==j else '0' for j in range(len(h))] for i in range(len(h))])
-Z = Matrix([symbols(f'Z[{i}]') for i in range(len(h))])
-
+R_mocap = Matrix([[symbols(f'R_mocap[{i}]') if i==j else '0' for j in range(len(h_mocap))] for i in range(len(h_mocap))])
+R_vbody = Matrix([[symbols(f'R_vbody[{i}]') if i==j else '0' for j in range(len(h_vbody))] for i in range(len(h_vbody))])
+Z_mocap = Matrix([symbols(f'Z[{i}]') for i in range(len(h_mocap))])
+Z_vbody = Matrix([symbols(f'Z[{i}]') for i in range(len(h_vbody))])
 
 #%% generate code
 
@@ -82,34 +90,42 @@ from sympy.codegen.ast import CodeBlock, Assignment
 Xpred = f
 Ppred = F*P*F.T + L*Q*L.T
 
-# UPDATE STEP
-S = H*P*H.T + R
-sdim = S.shape[0]
+# S CALCULATION MOCAP
+S_mocap = H_mocap*P*H_mocap.T + R_mocap
+sdim_mocap = S_mocap.shape[0]
 xdim = len(X)
 
-## old way with symbolic inversion
-#inv__ = invert_function(sdim)
-#iS = inv__(S)
-#K = P*H.T*iS
+# S CALCULATION BODYV
+S_vbody = H_vbody*P*H_vbody.T + R_vbody
+sdim_vbody = S_vbody.shape[0]
 
 ## new way with numerical inversion
-HP = H*P
-# numerical solution using Cholesky factorization of  S*K^T = HP  takes place here and produces column major K
-#                                         columns ,              rows
-K = Matrix([[symbols(f'K[{j*xdim + i}]') for j in range(sdim)] for i in range(xdim)])
+HP_mocap = H_mocap*P
+K_mocap = Matrix([[symbols(f'K_mocap[{j*xdim + i}]') for j in range(sdim_mocap)] for i in range(xdim)])
 
-Xup = X + K*(Z - h)
-Pup = (eye(len(X)) - K*H)*P
+HP_vbody = H_vbody*P
+K_vbody = Matrix([[symbols(f'K_vbody[{j*xdim + i}]') for j in range(sdim_vbody)] for i in range(xdim)])
+
+Xup_mocap = X + K_mocap*(Z_mocap - h_mocap)
+Pup_mocap = (eye(len(X)) - K_mocap*H_mocap)*P
+
+Xup_vbody = X + K_vbody*(Z_vbody - h_vbody)
+Pup_vbody = (eye(len(X)) - K_vbody*H_vbody)*P
+
 
 # assignments
 Xpred_assigments = [Assignment(symbols(f'X_new[{i}]'), Xpred[i]) for i in range(len(X))]
 Ppred_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Ppred[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
 
-S_assigments = [Assignment(symbols(f'S[{j*sdim+i}]'), S[i,j]) for i in range(len(Z)) for j in range(len(Z))] # both triangular, full matrix
-HP_assigments = [Assignment(symbols(f'HP[{j*sdim+i}]'), HP[i,j]) for j in range(xdim) for i in range(sdim)]
+S_mocap_assigments = [Assignment(symbols(f'S_mocap[{j*sdim_mocap+i}]'), S_mocap[i,j]) for i in range(len(Z_mocap)) for j in range(len(Z_mocap))] # both triangular, full matrix
+HP_mocap_assigments = [Assignment(symbols(f'HP_mocap[{j*sdim_mocap+i}]'), HP_mocap[i,j]) for j in range(xdim) for i in range(sdim_mocap)]
+Xup_mocap_assigments = [Assignment(symbols(f'X_new[{i}]'), Xup_mocap[i]) for i in range(len(X))]
+Pup_mocap_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Pup_mocap[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
 
-Xup_assigments = [Assignment(symbols(f'X_new[{i}]'), Xup[i]) for i in range(len(X))]
-Pup_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Pup[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
+S_vbody_assigments = [Assignment(symbols(f'S_vbody[{j*sdim_vbody+i}]'), S_vbody[i,j]) for i in range(len(Z_vbody)) for j in range(len(Z_vbody))] # both triangular, full matrix
+HP_vbody_assigments = [Assignment(symbols(f'HP_vbody[{j*sdim_vbody+i}]'), HP_vbody[i,j]) for j in range(xdim) for i in range(sdim_vbody)]
+Xup_vbody_assigments = [Assignment(symbols(f'X_new[{i}]'), Xup_vbody[i]) for i in range(len(X))]
+Pup_vbody_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Pup_vbody[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
 
 
 # PREDICTION STEP
@@ -128,40 +144,75 @@ prediction_code_N_tmps = len([s for s in prediction_code.left_hand_sides if s.na
 print('CCODE')
 prediction_code = ccode(prediction_code)
 
-
+# UPDATE CODE FOR MOCAP-----------------------------------
 # Prepare numerical solution for K
 print('S and PHT MATRICES FOR SOLVING K:')
 # code generation
-s_code = CodeBlock(*S_assigments, *HP_assigments)
+s_code_mocap = CodeBlock(*S_mocap_assigments, *HP_mocap_assigments)
 # common subexpression elimination with tmp variables
 print('CSE')
-s_code = s_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+s_code_mocap = s_code_mocap.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
 # simplify
 print('SIMPLIFY')
-s_code = s_code.simplify()
+s_code_mocap = s_code_mocap.simplify()
 # count number of tmp variables
-s_code_N_tmps = len([s for s in s_code.left_hand_sides if s.name.startswith('tmp')])
+s_code_mocap_N_tmps = len([s for s in s_code_mocap.left_hand_sides if s.name.startswith('tmp')])
 # generate C code
 print('CCODE')
-s_code = ccode(s_code)
+s_code_mocap = ccode(s_code_mocap)
 
 
 # UPDATE STEP
 print('UPDATE:')
 # code generation
-update_code = CodeBlock(*Xup_assigments, *Pup_assigments)
+update_code_mocap = CodeBlock(*Xup_mocap_assigments, *Pup_mocap_assigments)
 # common subexpression elimination with tmp variables
 print('CSE')
-update_code = update_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+update_code_mocap = update_code_mocap.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
 # simplify
 print('SIMPLIFY')
-update_code = update_code.simplify()
+update_code_mocap = update_code_mocap.simplify()
 # count number of tmp variables
-update_code_N_tmps = len([s for s in update_code.left_hand_sides if s.name.startswith('tmp')])
+update_code_mocap_N_tmps = len([s for s in update_code_mocap.left_hand_sides if s.name.startswith('tmp')])
 # generate C code
 print('CCODE')
-update_code = ccode(update_code)
+update_code_mocap = ccode(update_code_mocap)
+# --------------------------------------------------------
 
+# UPDATE CODE FOR VBODY-----------------------------------
+# Prepare numerical solution for K
+print('S and PHT MATRICES FOR SOLVING K:')
+# code generation
+s_code_vbody = CodeBlock(*S_vbody_assigments, *HP_vbody_assigments)
+# common subexpression elimination with tmp variables
+print('CSE')
+s_code_vbody = s_code_vbody.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+# simplify
+print('SIMPLIFY')
+s_code_vbody = s_code_vbody.simplify()
+# count number of tmp variables
+s_code_vbody_N_tmps = len([s for s in s_code_vbody.left_hand_sides if s.name.startswith('tmp')])
+# generate C code
+print('CCODE')
+s_code_vbody = ccode(s_code_vbody)
+
+
+# UPDATE STEP
+print('UPDATE:')
+# code generation
+update_code_vbody = CodeBlock(*Xup_vbody_assigments, *Pup_vbody_assigments)
+# common subexpression elimination with tmp variables
+print('CSE')
+update_code_vbody = update_code_vbody.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+# simplify
+print('SIMPLIFY')
+update_code_vbody = update_code_vbody.simplify()
+# count number of tmp variables
+update_code_vbody_N_tmps = len([s for s in update_code_vbody.left_hand_sides if s.name.startswith('tmp')])
+# generate C code
+print('CCODE')
+update_code_vbody = ccode(update_code_vbody)
+# --------------------------------------------------------
 
 #%% post-proc code
 
@@ -171,16 +222,28 @@ prediction_code = prediction_code.replace('cos(', 'cosf(')
 prediction_code = prediction_code.replace('tan(', 'tanf(')
 prediction_code = prediction_code.replace('pow(', 'powf(')
 prediction_code = prediction_code.replace('\n', '\n\t')
-s_code = s_code.replace('sin(', 'sinf(')
-s_code = s_code.replace('cos(', 'cosf(')
-s_code = s_code.replace('tan(', 'tanf(')
-s_code = s_code.replace('pow(', 'powf(')
-s_code = s_code.replace('\n', '\n\t')
-update_code = update_code.replace('sin(', 'sinf(')
-update_code = update_code.replace('cos(', 'cosf(')
-update_code = update_code.replace('tan(', 'tanf(')
-update_code = update_code.replace('pow(', 'powf(')
-update_code = update_code.replace('\n', '\n\t')
+# mocap
+s_code_mocap = s_code_mocap.replace('sin(', 'sinf(')
+s_code_mocap = s_code_mocap.replace('cos(', 'cosf(')
+s_code_mocap = s_code_mocap.replace('tan(', 'tanf(')
+s_code_mocap = s_code_mocap.replace('pow(', 'powf(')
+s_code_mocap = s_code_mocap.replace('\n', '\n\t')
+update_code_mocap = update_code_mocap.replace('sin(', 'sinf(')
+update_code_mocap = update_code_mocap.replace('cos(', 'cosf(')
+update_code_mocap = update_code_mocap.replace('tan(', 'tanf(')
+update_code_mocap = update_code_mocap.replace('pow(', 'powf(')
+update_code_mocap = update_code_mocap.replace('\n', '\n\t')
+# vbody
+s_code_vbody = s_code_vbody.replace('sin(', 'sinf(')
+s_code_vbody = s_code_vbody.replace('cos(', 'cosf(')
+s_code_vbody = s_code_vbody.replace('tan(', 'tanf(')
+s_code_vbody = s_code_vbody.replace('pow(', 'powf(')
+s_code_vbody = s_code_vbody.replace('\n', '\n\t')
+update_code_vbody = update_code_vbody.replace('sin(', 'sinf(')
+update_code_vbody = update_code_vbody.replace('cos(', 'cosf(')
+update_code_vbody = update_code_vbody.replace('tan(', 'tanf(')
+update_code_vbody = update_code_vbody.replace('pow(', 'powf(')
+update_code_vbody = update_code_vbody.replace('\n', '\n\t')
 
 
 #%% emit code
@@ -193,11 +256,14 @@ data = {}
 data['lenX'] = len(X)
 data['lenQ'] = len(W)
 data['lenU'] = len(U)
-data['lenh'] = len(h)
-data['lenTmp'] = max(prediction_code_N_tmps, s_code_N_tmps, update_code_N_tmps)
+data['lenh_mocap'] = len(h_mocap)
+data['lenh_vbody'] = len(h_vbody)
+data['lenTmp'] = max(prediction_code_N_tmps, s_code_mocap_N_tmps, update_code_mocap_N_tmps, s_code_vbody_N_tmps, update_code_vbody_N_tmps)
 data['prediction_code'] = prediction_code
-data['prepare_gain_code'] = s_code
-data['update_code'] = update_code
+data['prepare_gain_code_mocap'] = s_code_mocap
+data['update_code_mocap'] = update_code_mocap
+data['prepare_gain_code_vbody'] = s_code_vbody
+data['update_code_vbody'] = update_code_vbody
 
 # make dirs 
 home_path = path.dirname(__file__)

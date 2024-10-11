@@ -12,7 +12,10 @@
 bool ekf_use_quat = false;
 
 float ekf_Q[N_PROC_NOISES];         // Kalman filter process noise covariance matrix (diagonal)
-float ekf_R[N_MEASUREMENTS];   // Kalman filter measurement noise covariance matrix (diagonal)
+
+// 2 measurement models: mocap and vbody
+float ekf_R_mocap[N_MEASUREMENTS_MOCAP];   // Kalman filter measurement noise covariance matrix (diagonal)
+float ekf_R_vbody[N_MEASUREMENTS_VBODY];
 
 // state
 float ekf_X[N_STATES];
@@ -22,12 +25,19 @@ float ekf_X_new[N_STATES];
 float ekf_P_upper_diagonal[N_STATES*(N_STATES+1)/2];
 float ekf_P_upper_diagonal_new[N_STATES*(N_STATES+1)/2];
 
-// gain matrix calculations
-float ekf_S_full[N_MEASUREMENTS*N_MEASUREMENTS];
-float ekf_S_chol[N_MEASUREMENTS*N_MEASUREMENTS];
-float ekf_S_iDiag[N_MEASUREMENTS];
-float ekf_HP[N_STATES*N_MEASUREMENTS];
-float ekf_K[N_STATES*N_MEASUREMENTS];
+// gain matrix calculations MOCAP
+float ekf_S_full_mocap[N_MEASUREMENTS_MOCAP*N_MEASUREMENTS_MOCAP];
+float ekf_S_chol_mocap[N_MEASUREMENTS_MOCAP*N_MEASUREMENTS_MOCAP];
+float ekf_S_iDiag_mocap[N_MEASUREMENTS_MOCAP];
+float ekf_HP_mocap[N_STATES*N_MEASUREMENTS_MOCAP];
+float ekf_K_mocap[N_STATES*N_MEASUREMENTS_MOCAP];
+
+// gain matrix calculations VBODY
+float ekf_S_full_vbody[N_MEASUREMENTS_VBODY*N_MEASUREMENTS_VBODY];
+float ekf_S_chol_vbody[N_MEASUREMENTS_VBODY*N_MEASUREMENTS_VBODY];
+float ekf_S_iDiag_vbody[N_MEASUREMENTS_VBODY];
+float ekf_HP_vbody[N_STATES*N_MEASUREMENTS_VBODY];
+float ekf_K_vbody[N_STATES*N_MEASUREMENTS_VBODY];
 
 // temporary variables
 float tmp[{{ lenTmp }}];
@@ -39,13 +49,21 @@ float *X_new = ekf_X_new;
 float *P = ekf_P_upper_diagonal;
 float *P_new = ekf_P_upper_diagonal_new;
 
-float *S = ekf_S_full;
-float *HP = ekf_HP;
-float *K = ekf_K;
+// MOCAP
+float *S_mocap = ekf_S_full_mocap;
+float *HP_mocap = ekf_HP_mocap;
+float *K_mocap = ekf_K_mocap;
+
+// VBODY
+float *S_vbody = ekf_S_full_vbody;
+float *HP_vbody = ekf_HP_vbody;
+float *K_vbody = ekf_K_vbody;
 
 // renaming
 float *Q = ekf_Q;
-float *R = ekf_R;
+
+float *R_mocap = ekf_R_mocap;
+float *R_vbody = ekf_R_vbody;
 
 // pointer for swapping
 float *swap_ptr;
@@ -64,9 +82,17 @@ void ekf_set_Q(float Q[N_INPUTS]) {
     }
 }
 
-void ekf_set_R(float R[N_MEASUREMENTS]) {
-    for (int i=0; i<N_MEASUREMENTS; i++) {
-        ekf_R[i] = R[i];
+// MOCAP
+void ekf_set_R_mocap(float R[N_MEASUREMENTS_MOCAP]) {
+    for (int i=0; i<N_MEASUREMENTS_MOCAP; i++) {
+        ekf_R_mocap[i] = R[i];
+    }
+}
+
+// VBODY
+void ekf_set_R_vbody(float R[N_MEASUREMENTS_VBODY]) {
+    for (int i=0; i<N_MEASUREMENTS_VBODY; i++) {
+        ekf_R_vbody[i] = R[i];
     }
 }
 
@@ -86,12 +112,6 @@ void ekf_set_P_diag(float P_diag[N_STATES]) {
         P[i*(i+1)/2+i] = P_diag[i];
     }
 }
-
-//void ekf_set_P(float P0[N_STATES*(N_STATES+1)/2]) {
-//    for (int i=0; i<N_STATES*(N_STATES+1)/2; i++) {
-//        P[i] = P0[i];
-//    }
-//}
 
 void ekf_predict(float U[N_INPUTS], float dt) {
     // PREDICTION STEP X_new, P_new = ...
@@ -119,9 +139,10 @@ void normalize_quaternion(float* q) {
     }
 }
 
-void ekf_update(float Z[N_MEASUREMENTS]) {
+
+void ekf_update_mocap(float Z[N_MEASUREMENTS_MOCAP]) {
     // prepare gain calculation
-    {{ prepare_gain_code }}
+    {{ prepare_gain_code_mocap }}
 
     // renorm quat
     normalize_quaternion(X+6);
@@ -133,29 +154,29 @@ void ekf_update(float Z[N_MEASUREMENTS]) {
         float S_small[3*3];
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 3; j++) {
-                S_small[i + j*3] = S[i + j*N_MEASUREMENTS];
+                S_small[i + j*3] = S_mocap[i + j*N_MEASUREMENTS_MOCAP];
             }
         }
         float k_row[3];
         float S_small_chol[3*3];
-        chol(S_small_chol, S_small, ekf_S_iDiag, 3);
+        chol(S_small_chol, S_small, ekf_S_iDiag_mocap, 3);
         for (int i = 0; i < N_STATES; i++) {
-            chol_solve(S_small_chol, ekf_S_iDiag, 3, (HP+(i*N_MEASUREMENTS)), k_row);
+            chol_solve(S_small_chol, ekf_S_iDiag_mocap, 3, (HP_mocap+(i*N_MEASUREMENTS_MOCAP)), k_row);
             for (int j = 0; j < 3; j++) {
-                K[i + j*N_STATES] = k_row[j];
+                K_mocap[i + j*N_STATES] = k_row[j];
             }
-            for (int j = 3; j < N_MEASUREMENTS; j++) {
-                K[i + j*N_STATES] = 0.f;
+            for (int j = 3; j < N_MEASUREMENTS_MOCAP; j++) {
+                K_mocap[i + j*N_STATES] = 0.f;
             }
         }
     } else {
         // full state kalman update, meh
-        chol(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS);
+        chol(ekf_S_chol_mocap, S_mocap, ekf_S_iDiag_mocap, N_MEASUREMENTS_MOCAP);
         for (int i = 0; i < N_STATES; i++) {
-            float k_row[N_MEASUREMENTS];
-            chol_solve(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS, (HP+(i*N_MEASUREMENTS)), k_row);
-            for (int j = 0; j < N_MEASUREMENTS; j++) {
-                K[i + j*N_STATES] = k_row[j];
+            float k_row[N_MEASUREMENTS_MOCAP];
+            chol_solve(ekf_S_chol_mocap, ekf_S_iDiag_mocap, N_MEASUREMENTS_MOCAP, (HP_mocap+(i*N_MEASUREMENTS_MOCAP)), k_row);
+            for (int j = 0; j < N_MEASUREMENTS_MOCAP; j++) {
+                K_mocap[i + j*N_STATES] = k_row[j];
             }
         }
     }
@@ -174,7 +195,7 @@ void ekf_update(float Z[N_MEASUREMENTS]) {
     }
 
     // UPDATE STEP X_new, P_new = ...
-    {{ update_code }}
+    {{ update_code_mocap }}
 
     // swap X, X_new and P, P_new pointers
     swap_ptr = X;
@@ -188,3 +209,36 @@ void ekf_update(float Z[N_MEASUREMENTS]) {
     P_new = swap_ptr;
 }
 
+void ekf_update_vbody(float Z[N_MEASUREMENTS_VBODY]) {
+    // prepare gain calculation
+    {{ prepare_gain_code_vbody }}
+
+    // renorm quat
+    normalize_quaternion(X+6);
+
+    // we have symmetric S and PHT in col major.
+    // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
+    // full state kalman update
+    chol(ekf_S_chol_vbody, S_vbody, ekf_S_iDiag_vbody, N_MEASUREMENTS_VBODY);
+    for (int i = 0; i < N_STATES; i++) {
+        float k_row[N_MEASUREMENTS_VBODY];
+        chol_solve(ekf_S_chol_vbody, ekf_S_iDiag_vbody, N_MEASUREMENTS_VBODY, (HP_vbody+(i*N_MEASUREMENTS_VBODY)), k_row);
+        for (int j = 0; j < N_MEASUREMENTS_VBODY; j++) {
+            K_vbody[i + j*N_STATES] = k_row[j];
+        }
+    }
+
+    // UPDATE STEP X_new, P_new = ...
+    {{ update_code_vbody }}
+
+    // swap X, X_new and P, P_new pointers
+    swap_ptr = X;
+    X = X_new;
+    X_new = swap_ptr;
+
+    normalize_quaternion(X+6);
+
+    swap_ptr = P;
+    P = P_new;
+    P_new = swap_ptr;
+}

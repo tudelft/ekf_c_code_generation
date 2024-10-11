@@ -11,7 +11,10 @@
 #define N_STATES {{ lenX }}
 #define N_INPUTS {{ lenU }}
 #define N_PROC_NOISES {{ lenQ }}
-#define N_MEASUREMENTS {{ lenh }}
+
+// 2 measurement models: mocap, vbody
+#define N_MEASUREMENTS_MOCAP {{ lenh_mocap }}
+#define N_MEASUREMENTS_VBODY {{ lenh_vbody }}
 
 // getters
 float* ekf_get_X(void);     // get state vector
@@ -22,14 +25,18 @@ float* ekf_get_P(void);     // get covariance matrix (lower diagonal)
 
 // setters
 void ekf_set_Q(float Q[N_INPUTS]);                    // set process noise covariance matrix diagonal
-void ekf_set_R(float R[N_MEASUREMENTS]);              // set measurement noise covariance matrix diagonal
+// 2 measurement models: mocap, vbody
+void ekf_set_R_mocap(float R[N_MEASUREMENTS_MOCAP]);              // set measurement noise covariance matrix diagonal
+void ekf_set_R_vbody(float R[N_MEASUREMENTS_VBODY]);              // set measurement noise covariance matrix diagonal
 void ekf_set_X(float X0[N_STATES]);                   // set state vector
 void ekf_set_P_diag(float P_diag[N_STATES]);          // set covariance matrix diagonal
-//void ekf_set_P(float P0[N_STATES*(N_STATES+1)/2]);    // set covariance matrix (lower diagonal)
 
 // prediction and update functions
 void ekf_predict(float U[N_INPUTS], float dt);
-void ekf_update(float Z[N_MEASUREMENTS]);
+
+// 2 measurement models: mocap, vbody
+void ekf_update_mocap(float Z[N_MEASUREMENTS_MOCAP]);
+void ekf_update_vbody(float Z[N_MEASUREMENTS_VBODY]);
 
 #endif // EKF_CALC_H
 

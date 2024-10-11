@@ -4,3 +4,5 @@
 *.so
 *.o
 *.vscode
+flight_data
+__pycache__
