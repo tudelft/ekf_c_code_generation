@@ -711,8 +711,7 @@ def fit_thrust_drag_model_extended(data, subtract_ekf_bias=True):
     # Prepare the terms for the linear regression model
     u = data['vbx']
     v = data['vby']
-    omega = np.array([data['omega[0]'], data['omega[1]'], data['omega[2]'], data['omega[3]']])
-    sum_omega = np.sum(omega, axis=0)
+    sum_omega = data['omega[0]']+data['omega[1]']+data['omega[2]']+data['omega[3]']
     abs_v = np.abs(v)  # Since u is vbx, we'll use this for |v|
     w = sum_omega  # Using sum of omegas as w
 
@@ -735,14 +734,10 @@ def fit_thrust_drag_model_extended(data, subtract_ekf_bias=True):
         Y = data['ax'] - data['ekf_acc_b_x']
 
     # Perform the linear regression to solve for the coefficients (k1 to k8)
-    coefficients = np.linalg.lstsq(X, Y, rcond=None)[0]
+    k1, k2, k3, k4, k5, k6, k7, k8  = np.linalg.lstsq(X, Y, rcond=None)[0]
 
-    # Extracting the coefficients for clarity
-    k0, k1, k2, k3, k4, k5, k6, k7, k8 = coefficients
-
-
-    
-    if 'ax_unfilteresd' in data:
+   
+    if 'ax_unfiltered' in data:
         axs[1].plot(data['t'], data['ax_unfiltered'], label='ax raw', alpha=0.1, color='blue')
     axs[1].plot(data['t'], Y, label='ax') #, alpha=0.2)
     # axs[1].plot(data['t'], data['ax_filt'], label='ax filt')
@@ -781,7 +776,7 @@ def fit_thrust_drag_model_extended(data, subtract_ekf_bias=True):
     plt.show()
     
     # print('k_omega = {:.2e}, k_x = {:.2e}, k_y = {:.2e}'.format(k_omega, k_x, k_y))
-    return  k0, k1, k2, k3, k4, k5, k6, k7, k8 , k_y, k_omega, k_h, k_z
+    return  k1, k2, k3, k4, k5, k6, k7, k8 , k_y, k_omega, k_h, k_z
 
 from scipy.optimize import minimize
 
