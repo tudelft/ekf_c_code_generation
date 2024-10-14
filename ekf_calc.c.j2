@@ -113,21 +113,6 @@ void ekf_set_P_diag(float P_diag[N_STATES]) {
     }
 }
 
-void ekf_predict(float U[N_INPUTS], float dt) {
-    // PREDICTION STEP X_new, P_new = ...
-    {{ prediction_code }}
-
-    // swap X, X_new and P, P_new pointers
-    swap_ptr = X;
-    X = X_new;
-    X_new = swap_ptr;
-
-    swap_ptr = P;
-    P = P_new;
-    P_new = swap_ptr;
-}
-
-
 void normalize_quaternion(float* q) {
     float norm = q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3];
     if (norm > 1e-4f) {
@@ -139,13 +124,25 @@ void normalize_quaternion(float* q) {
     }
 }
 
+void ekf_predict(float U[N_INPUTS], float dt) {
+    // PREDICTION STEP X_new, P_new = ...
+    {{ prediction_code }}
+
+    // swap X, X_new and P, P_new pointers
+    swap_ptr = X;
+    X = X_new;
+    X_new = swap_ptr;
+
+    normalize_quaternion(X+6);
+
+    swap_ptr = P;
+    P = P_new;
+    P_new = swap_ptr;
+}
 
 void ekf_update_mocap(float Z[N_MEASUREMENTS_MOCAP]) {
     // prepare gain calculation
     {{ prepare_gain_code_mocap }}
-
-    // renorm quat
-    normalize_quaternion(X+6);
 
     // we have symmetric S and PHT in col major.
     // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
@@ -212,9 +209,6 @@ void ekf_update_mocap(float Z[N_MEASUREMENTS_MOCAP]) {
 void ekf_update_vbody(float Z[N_MEASUREMENTS_VBODY]) {
     // prepare gain calculation
     {{ prepare_gain_code_vbody }}
-
-    // renorm quat
-    normalize_quaternion(X+6);
 
     // we have symmetric S and PHT in col major.
     // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K

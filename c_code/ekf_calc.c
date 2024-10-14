@@ -113,6 +113,17 @@ void ekf_set_P_diag(float P_diag[N_STATES]) {
     }
 }
 
+void normalize_quaternion(float* q) {
+    float norm = q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3];
+    if (norm > 1e-4f) {
+        float inorm = 1.f / sqrtf(norm);
+        q[0] *= inorm;
+        q[1] *= inorm;
+        q[2] *= inorm;
+        q[3] *= inorm;
+    }
+}
+
 void ekf_predict(float U[N_INPUTS], float dt) {
     // PREDICTION STEP X_new, P_new = ...
     tmp[0] = powf(X[6], 2);
@@ -644,23 +655,12 @@ void ekf_predict(float U[N_INPUTS], float dt) {
     X = X_new;
     X_new = swap_ptr;
 
+    normalize_quaternion(X+6);
+
     swap_ptr = P;
     P = P_new;
     P_new = swap_ptr;
 }
-
-
-void normalize_quaternion(float* q) {
-    float norm = q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3];
-    if (norm > 1e-4f) {
-        float inorm = 1.f / sqrtf(norm);
-        q[0] *= inorm;
-        q[1] *= inorm;
-        q[2] *= inorm;
-        q[3] *= inorm;
-    }
-}
-
 
 void ekf_update_mocap(float Z[N_MEASUREMENTS_MOCAP]) {
     // prepare gain calculation
@@ -850,9 +850,6 @@ void ekf_update_mocap(float Z[N_MEASUREMENTS_MOCAP]) {
 	HP_mocap[109] = P[127]*ekf_use_quat;
 	HP_mocap[110] = P[128]*ekf_use_quat;
 	HP_mocap[111] = P[129]*ekf_use_quat;
-
-    // renorm quat
-    normalize_quaternion(X+6);
 
     // we have symmetric S and PHT in col major.
     // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
@@ -1286,9 +1283,6 @@ void ekf_update_vbody(float Z[N_MEASUREMENTS_VBODY]) {
 	HP_vbody[29] = P[108]*tmp[97] + P[109]*tmp[98] + P[110]*tmp[96] + P[111]*tmp[101] + P[112]*tmp[102] + P[113]*tmp[100] + P[114]*tmp[103];
 	HP_vbody[30] = P[123]*tmp[16] + P[124]*tmp[12] + P[125]*tmp[8] + P[126]*tmp[51] + P[127]*tmp[68] + P[128]*tmp[88] + P[129]*tmp[80];
 	HP_vbody[31] = P[123]*tmp[97] + P[124]*tmp[98] + P[125]*tmp[96] + P[126]*tmp[101] + P[127]*tmp[102] + P[128]*tmp[100] + P[129]*tmp[103];
-
-    // renorm quat
-    normalize_quaternion(X+6);
 
     // we have symmetric S and PHT in col major.
     // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
