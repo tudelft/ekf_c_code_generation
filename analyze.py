@@ -675,12 +675,13 @@ def fit_thrust_drag_model_extended(data, subtract_ekf_bias=True):
         data['omega[0]']**2 + data['omega[1]']**2 + data['omega[2]']**2 + data['omega[3]']**2,
         data['vbx']**2 + data['vby']**2,
         data['vbz'] *(data['omega[0]']+data['omega[1]']+data['omega[2]']+data['omega[3]']), 
-        data['vbz']**2
     ])
     Y = data['az']
     if subtract_ekf_bias:
         Y = data['az'] - data['ekf_acc_b_z']
-    k_omega, k_h, k_z, k_z2 = A = np.linalg.lstsq(X.T, Y, rcond=None)[0]
+    k_omega, k_h, k_z = A = np.linalg.lstsq(X.T, Y, rcond=None)[0]
+
+   
     
     
     if 'az_unfiltered' in data:
@@ -699,12 +700,47 @@ def fit_thrust_drag_model_extended(data, subtract_ekf_bias=True):
     # Eq. 2 from https://doi.org/10.1016/j.robot.2023.104588
     # ax = -k_x*vbx*sum(omega_i)
     # we will find k_x by linear regression
-    X = np.stack([data['vbx']*(data['omega[0]']+data['omega[1]']+data['omega[2]']+data['omega[3]'])])
-    # X = np.stack([data['vbx']])
+    # X = np.stack([data['vbx']*(data['omega[0]']+data['omega[1]']+data['omega[2]']+data['omega[3]'])])
+    # # X = np.stack([data['vbx']])
+    # Y = data['ax']
+    # if subtract_ekf_bias:
+    #     Y = data['ax'] - data['ekf_acc_b_x']
+    # k_x = A = np.linalg.lstsq(X.T, Y, rcond=None)[0]
+
+    
+    # Prepare the terms for the linear regression model
+    u = data['vbx']
+    v = data['vby']
+    omega = np.array([data['omega[0]'], data['omega[1]'], data['omega[2]'], data['omega[3]']])
+    sum_omega = np.sum(omega, axis=0)
+    abs_v = np.abs(v)  # Since u is vbx, we'll use this for |v|
+    w = sum_omega  # Using sum of omegas as w
+
+    # Creating each term from the equation
+    X_1 = u * sum_omega  # u * sum(omega)
+    X_2 = abs_v * w  # |v| * w
+    X_3 = u * abs_v  # u * |v|
+    X_4 = u * (w**2) * sum_omega  # u * (w^2) * sum(rpms)
+    X_5 = u * w * sum_omega  # u * w * sum(rpm)
+    X_6 = u * (w**2)  # u * (w^2)
+    X_7 = u * (abs_v**2)  # u * |v|^2
+    X_8 = u * abs_v  # u * |v| (same as X_3)
+
+    # Stack all terms into a single matrix X
+    X = np.stack([X_1, X_2, X_3, X_4, X_5, X_6, X_7, X_8], axis=1)
+
+    # Y vector (dependent variable)
     Y = data['ax']
     if subtract_ekf_bias:
         Y = data['ax'] - data['ekf_acc_b_x']
-    k_x, = A = np.linalg.lstsq(X.T, Y, rcond=None)[0]
+
+    # Perform the linear regression to solve for the coefficients (k1 to k8)
+    coefficients = np.linalg.lstsq(X, Y, rcond=None)[0]
+
+    # Extracting the coefficients for clarity
+    k0, k1, k2, k3, k4, k5, k6, k7, k8 = coefficients
+
+
     
     if 'ax_unfilteresd' in data:
         axs[1].plot(data['t'], data['ax_unfiltered'], label='ax raw', alpha=0.1, color='blue')
@@ -745,7 +781,7 @@ def fit_thrust_drag_model_extended(data, subtract_ekf_bias=True):
     plt.show()
     
     # print('k_omega = {:.2e}, k_x = {:.2e}, k_y = {:.2e}'.format(k_omega, k_x, k_y))
-    return k_x, k_y, k_omega, k_h, k_z, k_z2
+    return  k0, k1, k2, k3, k4, k5, k6, k7, k8 , k_y, k_omega, k_h, k_z
 
 from scipy.optimize import minimize
 
