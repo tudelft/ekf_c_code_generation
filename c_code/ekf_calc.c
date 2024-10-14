@@ -627,6 +627,9 @@ void ekf_predict(float U[N_INPUTS], float dt) {
     swap_ptr = P;
     P = P_new;
     P_new = swap_ptr;
+
+    // renorm quat
+    normalize_quaternion(X+6);
 }
 
 
@@ -829,9 +832,6 @@ void ekf_update(float Z[N_MEASUREMENTS]) {
 	HP[109] = P[127]*ekf_use_quat;
 	HP[110] = P[128]*ekf_use_quat;
 	HP[111] = P[129]*ekf_use_quat;
-
-    // renorm quat
-    normalize_quaternion(X+6);
 
     // we have symmetric S and PHT in col major.
     // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
