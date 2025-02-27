@@ -1,4 +1,7 @@
 from sympy import *
+from sympy.codegen.ast import CodeBlock, Assignment
+from os import path, makedirs
+from jinja2 import Environment, FileSystemLoader
 
 # states, inputs, and process noise
 X=Matrix(symbols('X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8] X[9] X[10] X[11] X[12] X[13] X[14] X[15]'))
@@ -73,8 +76,6 @@ Z = Matrix([symbols(f'Z[{i}]') for i in range(len(h))])
 
 #%% generate code
 
-# from sympy import symbols, sin
-from sympy.codegen.ast import CodeBlock, Assignment
 
 # EKF equations from: https://en.wikipedia.org/wiki/Extended_Kalman_filter: Non-additive noise formulation and equations
 
@@ -185,9 +186,6 @@ update_code = update_code.replace('\n', '\n\t')
 
 #%% emit code
 
-from os import path, makedirs
-from jinja2 import Environment, FileSystemLoader
-
 # set data used in templates
 data = {}
 data['lenX'] = len(X)
@@ -201,7 +199,7 @@ data['update_code'] = update_code
 
 # make dirs 
 home_path = path.dirname(__file__)
-code_path = path.join(home_path, 'c_code')
+code_path = path.join(home_path, 'build')
 makedirs(code_path, exist_ok=True)
 
 # create files from templates
