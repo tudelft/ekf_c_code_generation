@@ -6,49 +6,49 @@
 #include "ekf_calc.h"
 #include <math.h>
 #include <stdio.h>
-#include "common/maths.h"
 #include <stdbool.h>
+#include "common/maths.h"
 
-bool ekf_use_quat = false;
+static bool ekf_use_quat = false;
 
-float ekf_Q[N_PROC_NOISES];         // Kalman filter process noise covariance matrix (diagonal)
-float ekf_R[N_MEASUREMENTS];   // Kalman filter measurement noise covariance matrix (diagonal)
+static float ekf_Q[N_PROC_NOISES];         // Kalman filter process noise covariance matrix (diagonal)
+static float ekf_R[N_MEASUREMENTS];   // Kalman filter measurement noise covariance matrix (diagonal)
 
 // state
-float ekf_X[N_STATES];
-float ekf_X_new[N_STATES];
+static float ekf_X[N_STATES];
+static float ekf_X_new[N_STATES];
 
 // covariance matrix (upper diagonal) P[i,j] = P_upper_diagonal[i*(i+1)/2+j] (if i>=j)
-float ekf_P_upper_diagonal[N_STATES*(N_STATES+1)/2];
-float ekf_P_upper_diagonal_new[N_STATES*(N_STATES+1)/2];
+static float ekf_P_upper_diagonal[N_STATES*(N_STATES+1)/2];
+static float ekf_P_upper_diagonal_new[N_STATES*(N_STATES+1)/2];
 
 // gain matrix calculations
-float ekf_S_full[N_MEASUREMENTS*N_MEASUREMENTS];
-float ekf_S_chol[N_MEASUREMENTS*N_MEASUREMENTS];
-float ekf_S_iDiag[N_MEASUREMENTS];
-float ekf_HP[N_STATES*N_MEASUREMENTS];
-float ekf_K[N_STATES*N_MEASUREMENTS];
+static float ekf_S_full[N_MEASUREMENTS*N_MEASUREMENTS];
+static float ekf_S_chol[N_MEASUREMENTS*N_MEASUREMENTS];
+static float ekf_S_iDiag[N_MEASUREMENTS];
+static float ekf_HP[N_STATES*N_MEASUREMENTS];
+static float ekf_K[N_STATES*N_MEASUREMENTS];
 
 // temporary variables
-float tmp[{{ lenTmp }}];
+static float tmp[{{ lenTmp }}];
 
 // pointers
-float *X = ekf_X;
-float *X_new = ekf_X_new;
+static float *X = ekf_X;
+static float *X_new = ekf_X_new;
 
-float *P = ekf_P_upper_diagonal;
-float *P_new = ekf_P_upper_diagonal_new;
+static float *P = ekf_P_upper_diagonal;
+static float *P_new = ekf_P_upper_diagonal_new;
 
-float *S = ekf_S_full;
-float *HP = ekf_HP;
-float *K = ekf_K;
+static float *S = ekf_S_full;
+static float *HP = ekf_HP;
+static float *K = ekf_K;
 
 // renaming
-float *Q = ekf_Q;
-float *R = ekf_R;
+static float *Q = ekf_Q;
+static float *R = ekf_R;
 
 // pointer for swapping
-float *swap_ptr;
+static float *swap_ptr;
 
 float* ekf_get_X(void) {
     return X;
@@ -76,6 +76,12 @@ void ekf_set_X(float X0[N_STATES]) {
     }
 }
 
+void ekf_set_P(float P0[N_STATES*(N_STATES+1)/2]) {
+    for (int i=0; i<N_STATES*(N_STATES+1)/2; i++) {
+        P[i] = P0[i];
+    }
+}
+
 void ekf_set_P_diag(float P_diag[N_STATES]) {
     // set P to zeros
     for (int i=0; i<N_STATES*(N_STATES+1)/2; i++) {
@@ -87,7 +93,11 @@ void ekf_set_P_diag(float P_diag[N_STATES]) {
     }
 }
 
-void normalize_quaternion(float* q) {
+void ekf_set_use_quat(bool use) {
+    ekf_use_quat = use;
+}
+
+static void normalize_quaternion(float* q) {
     float norm = q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3];
     if (norm > 1e-4f) {
         float inorm = 1.f / sqrtf(norm);
