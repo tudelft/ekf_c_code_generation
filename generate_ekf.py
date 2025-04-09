@@ -1,8 +1,8 @@
 from sympy import *
 
 # states, inputs, and process noise
-X=Matrix(symbols('X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8] X[9] X[10] X[11] X[12] X[13] X[14] X[15] X[16] X[17] X[18]'))
-U=Matrix(symbols('U[0] U[1] U[2]'))
+X=Matrix(symbols('X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8] X[9] X[10] X[11] X[12] X[13] X[14] X[15]'))
+U=Matrix(symbols('U[0] U[1] U[2] U[3] U[4] U[5]'))
 W=Matrix(symbols('W[0] W[1] W[2] W[3] W[4] W[5] W[6] W[7] W[8] W[9] W[10] W[11]'))
 
 # time step
@@ -10,14 +10,17 @@ dt=symbols('dt')
 
 g = 9.81
 # state
-x,y,z,vx,vy,vz,qw,qx,qy,qz,lx,ly,lz,lp,lq,lr,ax,ay,az = X
+x,y,z,vx,vy,vz,qw,qx,qy,qz,lx,ly,lz,lp,lq,lr = X
 # input
-p,q,r = U
+ax,ay,az,p,q,r = U
 # process noise
 wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr = W
 
 quat = Quaternion(qw, qx, qy, qz) # does norm 1 automatically renormaize?
-a_NED = Quaternion.rotate_point([ax,ay,az], quat)
+a_NED = Quaternion.rotate_point([ax-lx-wbx,ay-ly-wby,az-lz-wbz], quat)
+quat_inv = Quaternion(qw, -qx, -qy, -qz)
+v_body = Quaternion.rotate_point([vx,vy,vz], quat_inv)
+vbx, vby, vbz = v_body
 
 # https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
 #pqr_hat = Matrix([p-lp-wp, q-lq-wq, r-lr-wr])
@@ -40,9 +43,6 @@ f = Matrix([
     vx + a_NED[0]*dt,
     vy + a_NED[1]*dt,
     vz + (a_NED[2]+g)*dt,
-    ax + wx,
-    ay + wy,
-    az + wz,
     qw + q_dot.a*dt,
     qx + q_dot.b*dt,
     qy + q_dot.c*dt,
@@ -57,30 +57,30 @@ f = Matrix([
 
 # output function (measurement model):
 h_pnp = Matrix([x,y,z,qw,qx,qy,qz])
-h_acc = Matrix([ax,ay,az])
+h_v_body = Matrix([vbx,vby,vbz])
 
 # matrices:
 F = f.jacobian(X)
 L = f.jacobian(W)
 H_pnp = h_pnp.jacobian(X)
-H_acc = h_acc.jacobian(X)
+H_v_body = h_v_body.jacobian(X)
 
 # substitute W with 0
 f = f.subs([(w,0) for w in W])
 F = F.subs([(w,0) for w in W])
 L = L.subs([(w,0) for w in W])
 H_pnp = H_pnp.subs([(w,0) for w in W])
-H_acc = H_acc.subs([(w,0) for w in W])
+H_v_body = H_v_body.subs([(w,0) for w in W])
 
 # extra matrices
 symmetric_indexing = lambda i,j: int(j*(j+1)/2+i) if j>=i else int(i*(i+1)/2+j)
 P = Matrix([[symbols(f'P[{symmetric_indexing(i,j)}]') for j in range(len(X))] for i in range(len(X))])
 Q = Matrix([[symbols(f'Q[{i}]') if i==j else '0' for j in range(len(W))] for i in range(len(W))])
 R_pnp = Matrix([[symbols(f'R_pnp[{i}]') if i==j else '0' for j in range(len(h_pnp))] for i in range(len(h_pnp))])
-R_acc = Matrix([[symbols(f'R_acc[{i}]') if i==j else '0' for j in range(len(h_acc))] for i in range(len(h_acc))])
+R_v_body = Matrix([[symbols(f'R_v_body[{i}]') if i==j else '0' for j in range(len(h_v_body))] for i in range(len(h_v_body))])
 
 Z_pnp = Matrix([symbols(f'Z_pnp[{i}]') for i in range(len(h_pnp))])
-Z_acc = Matrix([symbols(f'Z_acc[{i}]') for i in range(len(h_acc))])
+Z_v_body = Matrix([symbols(f'Z_v_body[{i}]') for i in range(len(h_v_body))])
 
 
 #%% generate code
@@ -167,8 +167,8 @@ def get_update_code(h, H, R, Z, name=''):
 
 # PNP UPDATE CODE
 update_code_pnp, s_code_pnp, update_code_N_tmps_pnp, s_code_N_tmps_pnp = get_update_code(h_pnp, H_pnp, R_pnp, Z_pnp, name='pnp')
-# ACC UPDATE CODE
-update_code_acc, s_code_acc, update_code_N_tmps_acc, s_code_N_tmps_acc = get_update_code(h_acc, H_acc, R_acc, Z_acc, name='acc')
+# V_BODY UPDATE CODE
+update_code_v_body, s_code_v_body, update_code_N_tmps_v_body, s_code_N_tmps_v_body = get_update_code(h_v_body, H_v_body, R_v_body, Z_v_body, name='v_body')
 
 
 #%% post-proc code
@@ -188,8 +188,8 @@ prediction_code = float_functions(prediction_code)
 s_code_pnp = float_functions(s_code_pnp)
 update_code_pnp = float_functions(update_code_pnp)
 # acc update code
-s_code_acc = float_functions(s_code_acc)
-update_code_acc = float_functions(update_code_acc)
+s_code_v_body = float_functions(s_code_v_body)
+update_code_v_body = float_functions(update_code_v_body)
 
 #%% emit code
 
@@ -202,13 +202,13 @@ data['lenX'] = len(X)
 data['lenQ'] = len(W)
 data['lenU'] = len(U)
 data['lenh_pnp'] = len(h_pnp)
-data['lenh_acc'] = len(h_acc)
-data['lenTmp'] = max(prediction_code_N_tmps, s_code_N_tmps_pnp, update_code_N_tmps_pnp, s_code_N_tmps_acc, update_code_N_tmps_acc)
+data['lenh_v_body'] = len(h_v_body)
+data['lenTmp'] = max(prediction_code_N_tmps, s_code_N_tmps_pnp, update_code_N_tmps_pnp, s_code_N_tmps_v_body, update_code_N_tmps_v_body)
 data['prediction_code'] = prediction_code
 data['prepare_gain_code_pnp'] = s_code_pnp
 data['update_code_pnp'] = update_code_pnp
-data['prepare_gain_code_acc'] = s_code_acc
-data['update_code_acc'] = update_code_acc
+data['prepare_gain_code_v_body'] = s_code_v_body
+data['update_code_v_body'] = update_code_v_body
 
 # make dirs 
 home_path = path.dirname(__file__)
