@@ -1,21 +1,23 @@
 from sympy import *
 
 # states, inputs, and process noise
-X=Matrix(symbols('X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8] X[9] X[10] X[11] X[12] X[13] X[14] X[15]'))
-U=Matrix(symbols('U[0] U[1] U[2] U[3] U[4] U[5]'))
+X=Matrix(symbols('X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8] X[9] X[10] X[11] X[12] X[13] X[14] X[15] X[16] X[17] X[18]'))
+U=Matrix(symbols('U[0] U[1] U[2]'))
 W=Matrix(symbols('W[0] W[1] W[2] W[3] W[4] W[5] W[6] W[7] W[8] W[9] W[10] W[11]'))
 
 # time step
 dt=symbols('dt')
 
-# continuous dynamics:
 g = 9.81
-x,y,z,vx,vy,vz,qw,qx,qy,qz,lx,ly,lz,lp,lq,lr = X
-ax,ay,az,p,q,r = U
+# state
+x,y,z,vx,vy,vz,qw,qx,qy,qz,lx,ly,lz,lp,lq,lr,ax,ay,az = X
+# input
+p,q,r = U
+# process noise
 wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr = W
 
 quat = Quaternion(qw, qx, qy, qz) # does norm 1 automatically renormaize?
-a_NED = Quaternion.rotate_point([ax-lx-wx,ay-ly-wy,az-lz-wz], quat)
+a_NED = Quaternion.rotate_point([ax,ay,az], quat)
 
 # https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
 #pqr_hat = Matrix([p-lp-wp, q-lq-wq, r-lr-wr])
@@ -30,45 +32,55 @@ a_NED = Quaternion.rotate_point([ax-lx-wx,ay-ly-wy,az-lz-wz], quat)
 pqr_hat = Quaternion(0, p-lp-wp, q-lq-wq, r-lr-wr)
 q_dot = 0.5 * quat * pqr_hat
 
-f_continuous = Matrix([
-    vx,
-    vy,
-    vz,
-    a_NED[0],
-    a_NED[1],
-    a_NED[2] + g,
-    q_dot.a,
-    q_dot.b,
-    q_dot.c,
-    q_dot.d,
-    #0,0,0,0,0,0
-    wbx, wby, wbz, wbp, wbq, wbr
+# state transition model
+f = Matrix([
+    x+vx*dt,
+    y+vy*dt,
+    z+vz*dt,
+    vx + a_NED[0]*dt,
+    vy + a_NED[1]*dt,
+    vz + (a_NED[2]+g)*dt,
+    ax + wx,
+    ay + wy,
+    az + wz,
+    qw + q_dot.a*dt,
+    qx + q_dot.b*dt,
+    qy + q_dot.c*dt,
+    qz + q_dot.d*dt,
+    lx + wbx,   # acc x bias
+    ly + wby,   # acc y bias
+    lz + wbz,   # acc z bias
+    lp + wbp,   # gyro x bias
+    lq + wbq,   # gyro y bias
+    lr + wbr,   # gyro z bias
 ])
 
-# discretized dynamics:
-f = X + f_continuous*dt
-
 # output function (measurement model):
-use_quat = symbols('ekf_use_quat')
-h = Matrix([x,y,z,use_quat*qw,use_quat*qx,use_quat*qy,use_quat*qz])
+h_pnp = Matrix([x,y,z,qw,qx,qy,qz])
+h_acc = Matrix([ax,ay,az])
 
 # matrices:
 F = f.jacobian(X)
 L = f.jacobian(W)
-H = h.jacobian(X)
+H_pnp = h_pnp.jacobian(X)
+H_acc = h_acc.jacobian(X)
 
 # substitute W with 0
 f = f.subs([(w,0) for w in W])
 F = F.subs([(w,0) for w in W])
 L = L.subs([(w,0) for w in W])
-H = H.subs([(w,0) for w in W])
+H_pnp = H_pnp.subs([(w,0) for w in W])
+H_acc = H_acc.subs([(w,0) for w in W])
 
 # extra matrices
 symmetric_indexing = lambda i,j: int(j*(j+1)/2+i) if j>=i else int(i*(i+1)/2+j)
 P = Matrix([[symbols(f'P[{symmetric_indexing(i,j)}]') for j in range(len(X))] for i in range(len(X))])
 Q = Matrix([[symbols(f'Q[{i}]') if i==j else '0' for j in range(len(W))] for i in range(len(W))])
-R = Matrix([[symbols(f'R[{i}]') if i==j else '0' for j in range(len(h))] for i in range(len(h))])
-Z = Matrix([symbols(f'Z[{i}]') for i in range(len(h))])
+R_pnp = Matrix([[symbols(f'R_pnp[{i}]') if i==j else '0' for j in range(len(h_pnp))] for i in range(len(h_pnp))])
+R_acc = Matrix([[symbols(f'R_acc[{i}]') if i==j else '0' for j in range(len(h_acc))] for i in range(len(h_acc))])
+
+Z_pnp = Matrix([symbols(f'Z_pnp[{i}]') for i in range(len(h_pnp))])
+Z_acc = Matrix([symbols(f'Z_acc[{i}]') for i in range(len(h_acc))])
 
 
 #%% generate code
@@ -82,35 +94,9 @@ from sympy.codegen.ast import CodeBlock, Assignment
 Xpred = f
 Ppred = F*P*F.T + L*Q*L.T
 
-# UPDATE STEP
-S = H*P*H.T + R
-sdim = S.shape[0]
-xdim = len(X)
-
-## old way with symbolic inversion
-#inv__ = invert_function(sdim)
-#iS = inv__(S)
-#K = P*H.T*iS
-
-## new way with numerical inversion
-HP = H*P
-# numerical solution using Cholesky factorization of  S*K^T = HP  takes place here and produces column major K
-#                                         columns ,              rows
-K = Matrix([[symbols(f'K[{j*xdim + i}]') for j in range(sdim)] for i in range(xdim)])
-
-Xup = X + K*(Z - h)
-Pup = (eye(len(X)) - K*H)*P
-
 # assignments
 Xpred_assigments = [Assignment(symbols(f'X_new[{i}]'), Xpred[i]) for i in range(len(X))]
 Ppred_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Ppred[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
-
-S_assigments = [Assignment(symbols(f'S[{j*sdim+i}]'), S[i,j]) for i in range(len(Z)) for j in range(len(Z))] # both triangular, full matrix
-HP_assigments = [Assignment(symbols(f'HP[{j*sdim+i}]'), HP[i,j]) for j in range(xdim) for i in range(sdim)]
-
-Xup_assigments = [Assignment(symbols(f'X_new[{i}]'), Xup[i]) for i in range(len(X))]
-Pup_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Pup[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
-
 
 # PREDICTION STEP
 print('PREDICTION:')
@@ -128,60 +114,82 @@ prediction_code_N_tmps = len([s for s in prediction_code.left_hand_sides if s.na
 print('CCODE')
 prediction_code = ccode(prediction_code)
 
+def get_update_code(h, H, R, Z, name=''):
+    # UPDATE STEP
+    S = H*P*H.T + R
+    sdim = S.shape[0]
+    xdim = len(X)
+    HP = H*P
+    K = Matrix([[symbols(f'K_{name}[{j*xdim + i}]') for j in range(sdim)] for i in range(xdim)])
+    Xup = X + K*(Z - h)
+    Pup = (eye(len(X)) - K*H)*P
+    
+    S_assigments = [Assignment(symbols(f'S_{name}[{j*sdim+i}]'), S[i,j]) for i in range(len(Z)) for j in range(len(Z))] # both triangular, full matrix
+    HP_assigments = [Assignment(symbols(f'HP_{name}[{j*sdim+i}]'), HP[i,j]) for j in range(xdim) for i in range(sdim)]
+    Xup_assigments = [Assignment(symbols(f'X_new[{i}]'), Xup[i]) for i in range(len(X))]
+    Pup_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Pup[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
 
-# Prepare numerical solution for K
-print('S and PHT MATRICES FOR SOLVING K:')
-# code generation
-s_code = CodeBlock(*S_assigments, *HP_assigments)
-# common subexpression elimination with tmp variables
-print('CSE')
-s_code = s_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
-# simplify
-print('SIMPLIFY')
-s_code = s_code.simplify()
-# count number of tmp variables
-s_code_N_tmps = len([s for s in s_code.left_hand_sides if s.name.startswith('tmp')])
-# generate C code
-print('CCODE')
-s_code = ccode(s_code)
+    # Prepare numerical solution for K
+    print('S and PHT MATRICES FOR SOLVING K:')
+    # code generation
+    s_code = CodeBlock(*S_assigments, *HP_assigments)
+    # common subexpression elimination with tmp variables
+    print('CSE')
+    s_code = s_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+    # simplify
+    print('SIMPLIFY')
+    s_code = s_code.simplify()
+    # count number of tmp variables
+    s_code_N_tmps = len([s for s in s_code.left_hand_sides if s.name.startswith('tmp')])
+    # generate C code
+    print('CCODE')
+    s_code = ccode(s_code)
 
 
-# UPDATE STEP
-print('UPDATE:')
-# code generation
-update_code = CodeBlock(*Xup_assigments, *Pup_assigments)
-# common subexpression elimination with tmp variables
-print('CSE')
-update_code = update_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
-# simplify
-print('SIMPLIFY')
-update_code = update_code.simplify()
-# count number of tmp variables
-update_code_N_tmps = len([s for s in update_code.left_hand_sides if s.name.startswith('tmp')])
-# generate C code
-print('CCODE')
-update_code = ccode(update_code)
+    # UPDATE STEP
+    print('UPDATE:')
+    # code generation
+    update_code = CodeBlock(*Xup_assigments, *Pup_assigments)
+    # common subexpression elimination with tmp variables
+    print('CSE')
+    update_code = update_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+    # simplify
+    print('SIMPLIFY')
+    update_code = update_code.simplify()
+    # count number of tmp variables
+    update_code_N_tmps = len([s for s in update_code.left_hand_sides if s.name.startswith('tmp')])
+    # generate C code
+    print('CCODE')
+    update_code = ccode(update_code)
+    
+    return update_code, s_code, update_code_N_tmps, s_code_N_tmps
+    
+
+# PNP UPDATE CODE
+update_code_pnp, s_code_pnp, update_code_N_tmps_pnp, s_code_N_tmps_pnp = get_update_code(h_pnp, H_pnp, R_pnp, Z_pnp, name='pnp')
+# ACC UPDATE CODE
+update_code_acc, s_code_acc, update_code_N_tmps_acc, s_code_N_tmps_acc = get_update_code(h_acc, H_acc, R_acc, Z_acc, name='acc')
 
 
 #%% post-proc code
 
 # replace sin, cos, tan, pow with sinf, cosf, tanf, powf
-prediction_code = prediction_code.replace('sin(', 'sinf(')
-prediction_code = prediction_code.replace('cos(', 'cosf(')
-prediction_code = prediction_code.replace('tan(', 'tanf(')
-prediction_code = prediction_code.replace('pow(', 'powf(')
-prediction_code = prediction_code.replace('\n', '\n\t')
-s_code = s_code.replace('sin(', 'sinf(')
-s_code = s_code.replace('cos(', 'cosf(')
-s_code = s_code.replace('tan(', 'tanf(')
-s_code = s_code.replace('pow(', 'powf(')
-s_code = s_code.replace('\n', '\n\t')
-update_code = update_code.replace('sin(', 'sinf(')
-update_code = update_code.replace('cos(', 'cosf(')
-update_code = update_code.replace('tan(', 'tanf(')
-update_code = update_code.replace('pow(', 'powf(')
-update_code = update_code.replace('\n', '\n\t')
+def float_functions(txt):
+    txt = txt.replace('sin(', 'sinf(')
+    txt = txt.replace('cos(', 'cosf(')
+    txt = txt.replace('tan(', 'tanf(')
+    txt = txt.replace('pow(', 'powf(')
+    txt = txt.replace('\n', '\n\t')
+    return txt
 
+# prediction code
+prediction_code = float_functions(prediction_code)
+# pnp update code
+s_code_pnp = float_functions(s_code_pnp)
+update_code_pnp = float_functions(update_code_pnp)
+# acc update code
+s_code_acc = float_functions(s_code_acc)
+update_code_acc = float_functions(update_code_acc)
 
 #%% emit code
 
@@ -193,11 +201,14 @@ data = {}
 data['lenX'] = len(X)
 data['lenQ'] = len(W)
 data['lenU'] = len(U)
-data['lenh'] = len(h)
-data['lenTmp'] = max(prediction_code_N_tmps, s_code_N_tmps, update_code_N_tmps)
+data['lenh_pnp'] = len(h_pnp)
+data['lenh_acc'] = len(h_acc)
+data['lenTmp'] = max(prediction_code_N_tmps, s_code_N_tmps_pnp, update_code_N_tmps_pnp, s_code_N_tmps_acc, update_code_N_tmps_acc)
 data['prediction_code'] = prediction_code
-data['prepare_gain_code'] = s_code
-data['update_code'] = update_code
+data['prepare_gain_code_pnp'] = s_code_pnp
+data['update_code_pnp'] = update_code_pnp
+data['prepare_gain_code_acc'] = s_code_acc
+data['update_code_acc'] = update_code_acc
 
 # make dirs 
 home_path = path.dirname(__file__)

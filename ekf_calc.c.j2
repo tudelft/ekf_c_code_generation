@@ -11,8 +11,9 @@
 
 bool ekf_use_quat = false;
 
-float ekf_Q[N_PROC_NOISES];         // Kalman filter process noise covariance matrix (diagonal)
-float ekf_R[N_MEASUREMENTS];   // Kalman filter measurement noise covariance matrix (diagonal)
+float ekf_Q[N_PROC_NOISES];          // Kalman filter process noise covariance matrix (diagonal)
+float ekf_R_pnp[N_MEASUREMENTS_PNP]; // Kalman filter measurement noise covariance matrix (diagonal) PNP update
+float ekf_R_acc[N_MEASUREMENTS_ACC]; // Kalman filter measurement noise covariance matrix (diagonal) ACC update
 
 // state
 float ekf_X[N_STATES];
@@ -22,12 +23,19 @@ float ekf_X_new[N_STATES];
 float ekf_P_upper_diagonal[N_STATES*(N_STATES+1)/2];
 float ekf_P_upper_diagonal_new[N_STATES*(N_STATES+1)/2];
 
-// gain matrix calculations
-float ekf_S_full[N_MEASUREMENTS*N_MEASUREMENTS];
-float ekf_S_chol[N_MEASUREMENTS*N_MEASUREMENTS];
-float ekf_S_iDiag[N_MEASUREMENTS];
-float ekf_HP[N_STATES*N_MEASUREMENTS];
-float ekf_K[N_STATES*N_MEASUREMENTS];
+// gain matrix calculations PNP
+float ekf_S_full_pnp[N_MEASUREMENTS_PNP*N_MEASUREMENTS_PNP];
+float ekf_S_chol_pnp[N_MEASUREMENTS_PNP*N_MEASUREMENTS_PNP];
+float ekf_S_iDiag_pnp[N_MEASUREMENTS_PNP];
+float ekf_HP_pnp[N_STATES*N_MEASUREMENTS_PNP];
+float ekf_K_pnp[N_STATES*N_MEASUREMENTS_PNP];
+
+// gain matrix calculations ACC
+float ekf_S_full_acc[N_MEASUREMENTS_ACC*N_MEASUREMENTS_ACC];
+float ekf_S_chol_acc[N_MEASUREMENTS_ACC*N_MEASUREMENTS_ACC];
+float ekf_S_iDiag_acc[N_MEASUREMENTS_ACC];
+float ekf_HP_acc[N_STATES*N_MEASUREMENTS_ACC];
+float ekf_K_acc[N_STATES*N_MEASUREMENTS_ACC];
 
 // temporary variables
 float tmp[{{ lenTmp }}];
@@ -39,13 +47,18 @@ float *X_new = ekf_X_new;
 float *P = ekf_P_upper_diagonal;
 float *P_new = ekf_P_upper_diagonal_new;
 
-float *S = ekf_S_full;
-float *HP = ekf_HP;
-float *K = ekf_K;
+float *S_pnp = ekf_S_full_pnp;
+float *HP_pnp = ekf_HP_pnp;
+float *K_pnp = ekf_K_pnp;
+
+float *S_acc = ekf_S_full_acc;
+float *HP_acc = ekf_HP_acc;
+float *K_acc = ekf_K_acc;
 
 // renaming
 float *Q = ekf_Q;
-float *R = ekf_R;
+float *R_pnp = ekf_R_pnp;
+float *R_acc = ekf_R_acc;
 
 // pointer for swapping
 float *swap_ptr;
@@ -64,9 +77,15 @@ void ekf_set_Q(float Q[N_INPUTS]) {
     }
 }
 
-void ekf_set_R(float R[N_MEASUREMENTS]) {
-    for (int i=0; i<N_MEASUREMENTS; i++) {
-        ekf_R[i] = R[i];
+void ekf_set_R_pnp(float R[N_MEASUREMENTS_PNP]) {
+    for (int i=0; i<N_MEASUREMENTS_PNP; i++) {
+        ekf_R_pnp[i] = R[i];
+    }
+}
+
+void ekf_set_R_acc(float R[N_MEASUREMENTS_ACC]) {
+    for (int i=0; i<N_MEASUREMENTS_ACC; i++) {
+        ekf_R_acc[i] = R[i];
     }
 }
 
@@ -114,59 +133,69 @@ void ekf_predict(float U[N_INPUTS], float dt) {
     P_new = swap_ptr;
 }
 
-void ekf_update(float Z[N_MEASUREMENTS]) {
+void ekf_update_pnp(float Z_pnp[N_MEASUREMENTS_PNP]) {
     // prepare gain calculation
-    {{ prepare_gain_code }}
+    {{ prepare_gain_code_pnp }}
 
     // we have symmetric S and PHT in col major.
     // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
-    if (!ekf_use_quat) {
-        // 3 state kalman update, yay
-        float S_small[3*3];
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                S_small[i + j*3] = S[i + j*N_MEASUREMENTS];
-            }
-        }
-        float k_row[3];
-        float S_small_chol[3*3];
-        chol(S_small_chol, S_small, ekf_S_iDiag, 3);
-        for (int i = 0; i < N_STATES; i++) {
-            chol_solve(S_small_chol, ekf_S_iDiag, 3, (HP+(i*N_MEASUREMENTS)), k_row);
-            for (int j = 0; j < 3; j++) {
-                K[i + j*N_STATES] = k_row[j];
-            }
-            for (int j = 3; j < N_MEASUREMENTS; j++) {
-                K[i + j*N_STATES] = 0.f;
-            }
-        }
-    } else {
-        // full state kalman update, meh
-        chol(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS);
-        for (int i = 0; i < N_STATES; i++) {
-            float k_row[N_MEASUREMENTS];
-            chol_solve(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS, (HP+(i*N_MEASUREMENTS)), k_row);
-            for (int j = 0; j < N_MEASUREMENTS; j++) {
-                K[i + j*N_STATES] = k_row[j];
-            }
+    chol(ekf_S_chol_pnp, S_pnp, ekf_S_iDiag_pnp, N_MEASUREMENTS_PNP);
+    for (int i = 0; i < N_STATES; i++) {
+        float k_row[N_MEASUREMENTS_PNP];
+        chol_solve(ekf_S_chol_pnp, ekf_S_iDiag_pnp, N_MEASUREMENTS_PNP, (HP_pnp+(i*N_MEASUREMENTS_PNP)), k_row);
+        for (int j = 0; j < N_MEASUREMENTS_PNP; j++) {
+            K_pnp[i + j*N_STATES] = k_row[j];
         }
     }
-
+    
+    // this part is specific to ekf_update_pnp because it is comparing quaternions and the input could be an equivalent negative quat?
+    // --------------------------------------------
     float qerror2 = 0.f;
     for (int i = 0; i < 4; i++) {
-        qerror2 += (Z[3+i] - X[6+i])*(Z[3+i] - X[6+i]);
+        qerror2 += (Z_pnp[3+i] - X[6+i])*(Z_pnp[3+i] - X[6+i]);
     }
 
     if (qerror2 > 2.f) {
         // quaternion error is too big, negating the measured quaternion will
         // give better convergence
         for (int i = 0; i < 4; i++) {
-            Z[3+i] = -Z[3+i];
+            Z_pnp[3+i] = -Z_pnp[3+i];
+        }
+    }
+    // --------------------------------------------
+
+    // UPDATE STEP X_new, P_new = ...
+    {{ update_code_pnp }}
+
+    // swap X, X_new and P, P_new pointers
+    swap_ptr = X;
+    X = X_new;
+    X_new = swap_ptr;
+
+    normalize_quaternion(X+6);
+
+    swap_ptr = P;
+    P = P_new;
+    P_new = swap_ptr;
+}
+
+void ekf_update_acc(float Z_acc[N_MEASUREMENTS_ACC]) {
+    // prepare gain calculation
+    {{ prepare_gain_code_acc }}
+
+    // we have symmetric S and PHT in col major.
+    // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
+    chol(ekf_S_chol_acc, S_acc, ekf_S_iDiag_acc, N_MEASUREMENTS_ACC);
+    for (int i = 0; i < N_STATES; i++) {
+        float k_row[N_MEASUREMENTS_ACC];
+        chol_solve(ekf_S_chol_acc, ekf_S_iDiag_acc, N_MEASUREMENTS_ACC, (HP_acc+(i*N_MEASUREMENTS_ACC)), k_row);
+        for (int j = 0; j < N_MEASUREMENTS_ACC; j++) {
+            K_acc[i + j*N_STATES] = k_row[j];
         }
     }
 
     // UPDATE STEP X_new, P_new = ...
-    {{ update_code }}
+    {{ update_code_acc }}
 
     // swap X, X_new and P, P_new pointers
     swap_ptr = X;
