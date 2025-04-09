@@ -17,7 +17,7 @@ ax,ay,az,p,q,r = U
 wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr = W
 
 quat = Quaternion(qw, qx, qy, qz) # does norm 1 automatically renormaize?
-a_NED = Quaternion.rotate_point([ax-lx-wbx,ay-ly-wby,az-lz-wbz], quat)
+a_NED = Quaternion.rotate_point([ax-lx-wx,ay-ly-wy,az-lz-wz], quat)
 quat_inv = Quaternion(qw, -qx, -qy, -qz)
 v_body = Quaternion.rotate_point([vx,vy,vz], quat_inv)
 vbx, vby, vbz = v_body
