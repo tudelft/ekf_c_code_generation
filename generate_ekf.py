@@ -35,6 +35,10 @@ vbx, vby, vbz = v_body
 pqr_hat = Quaternion(0, p-lp-wp, q-lq-wq, r-lr-wr)
 q_dot = 0.5 * quat * pqr_hat
 
+phi = atan2(2*(qw*qx + qy*qz), 1 - 2*(qx**2 + qy**2))
+theta = asin(2*(qw*qy - qz*qx))
+psi = atan2(2*(qw*qz + qx*qy), 1 - 2*(qy**2 + qz**2))
+
 # state transition model
 f = Matrix([
     x+vx*dt,
@@ -57,7 +61,7 @@ f = Matrix([
 
 # output function (measurement model):
 h_pnp = Matrix([x,y,z,qw,qx,qy,qz])
-h_v_body = Matrix([vbx,vby,vbz])
+h_v_body = Matrix([vx,vy,vz,phi,theta])
 
 # matrices:
 F = f.jacobian(X)

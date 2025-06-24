@@ -12,7 +12,7 @@
 #define N_INPUTS 6
 #define N_PROC_NOISES 12
 #define N_MEASUREMENTS_PNP 7
-#define N_MEASUREMENTS_V_BODY 3
+#define N_MEASUREMENTS_V_BODY 5
 
 // getters
 float* ekf_get_X(void);     // get state vector
