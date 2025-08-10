@@ -1,7 +1,7 @@
 from sympy import *
 
 # states, inputs, and process noise
-X=Matrix(symbols('X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8] X[9] X[10] X[11] X[12] X[13] X[14] X[15]'))
+X=Matrix(symbols('X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8] X[9] X[10] X[11] X[12] X[13] X[14] X[15] X[16] X[17] X[18] X[19] X[20] X[21] X[22]'))
 U=Matrix(symbols('U[0] U[1] U[2] U[3] U[4] U[5]'))
 W=Matrix(symbols('W[0] W[1] W[2] W[3] W[4] W[5] W[6] W[7] W[8] W[9] W[10] W[11]'))
 
@@ -10,11 +10,13 @@ dt=symbols('dt')
 
 # continuous dynamics:
 g = 9.81
-x,y,z,vx,vy,vz,qw,qx,qy,qz,lx,ly,lz,lp,lq,lr = X
+# pos, vel, att, acc bias, gyro bias, extrinsics
+x,y,z,vx,vy,vz,qw,qx,qy,qz,lx,ly,lz,lp,lq,lr,ex,ey,ez,eqw,eqx,eqy,eqz = X
 ax,ay,az,p,q,r = U
 wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr = W
 
 quat = Quaternion(qw, qx, qy, qz) # does norm 1 automatically renormaize?
+quat_inv = Quaternion(qw, -qx, -qy, -qz)
 a_NED = Quaternion.rotate_point([ax-lx-wx,ay-ly-wy,az-lz-wz], quat)
 
 # https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
@@ -42,7 +44,8 @@ f_continuous = Matrix([
     q_dot.c,
     q_dot.d,
     #0,0,0,0,0,0
-    wbx, wby, wbz, wbp, wbq, wbr
+    wbx, wby, wbz, wbp, wbq, wbr,
+    0,0,0,0,0,0,0
 ])
 
 # discretized dynamics:
@@ -51,6 +54,28 @@ f = X + f_continuous*dt
 # output function (measurement model):
 use_quat = symbols('ekf_use_quat')
 h = Matrix([x,y,z,use_quat*qw,use_quat*qx,use_quat*qy,use_quat*qz])
+
+# projected points measurement
+fx, fy, cx, cy = symbols('fx fy cx cy')
+max_points = 16
+points_3d = [symbols(f'p3d{i}_x p3d{i}_y p3d{i}_z') for i in range(max_points)]
+points_2d = []
+for p3d in points_3d:
+    # point
+    px, py, pz = p3d
+    # from world to body coordinates
+    p_body = Quaternion.rotate_point([px-x, py-y, pz-z], quat_inv)
+    px, py, pz = p_body
+    # from body to camera coordinates
+    p_cam = Quaternion.rotate_point([px-ex, py-ey, pz-z], Quaternion(eqw, -eqx, -eqy, -eqz))
+    px, py, pz = p_cam
+    # camera coordinates to opencv convention
+    px, py, pz = py, pz, px
+    # project to 2d
+    u = px*fx/pz + cx
+    v = py*fy/pz + cy
+    points_2d.append((u,v))
+
 
 # matrices:
 F = f.jacobian(X)
