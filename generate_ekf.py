@@ -15,23 +15,52 @@ x,y,z,vx,vy,vz,qw,qx,qy,qz,lx,ly,lz,lp,lq,lr,ex,ey,ez,eqw,eqx,eqy,eqz = X
 ax,ay,az,p,q,r = U
 wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr = W
 
-quat = Quaternion(qw, qx, qy, qz) # does norm 1 automatically renormaize?
-quat_inv = Quaternion(qw, -qx, -qy, -qz)
-a_NED = Quaternion.rotate_point([ax-lx-wx,ay-ly-wy,az-lz-wz], quat)
+# Quaternion formulas
+def quat_product(q1, q2):
+    w1, x1, y1, z1 = q1
+    w2, x2, y2, z2 = q2
+    return [
+        w1*w2 - x1*x2 - y1*y2 - z1*z2,
+        w1*x2 + x1*w2 + y1*z2 - z1*y2,
+        w1*y2 - x1*z2 + y1*w2 + z1*x2,
+        w1*z2 + x1*y2 - y1*x2 + z1*w2
+    ]
 
-# https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
-#pqr_hat = Matrix([p-lp-wp, q-lq-wq, r-lr-wr])
-#Omega_pqr = Matrix([
-#    [0,          -pqr_hat[0], -pqr_hat[1], -pqr_hat[2]],
-#    [pqr_hat[0],  0,           pqr_hat[2], -pqr_hat[1]],
-#    [pqr_hat[1], -pqr_hat[2],  0,          +pqr_hat[0]],
-#    [pqr_hat[2], +pqr_hat[1], -pqr_hat[0], 0],
-#])
-#q_dot = 0.5*Omega_pqr * Matrix([quat.a, quat.b, quat.c, quat.d])
+def quat_scale(scale, q):
+    return [scale*qi for qi in q]
 
-pqr_hat = Quaternion(0, p-lp-wp, q-lq-wq, r-lr-wr)
-q_dot = 0.5 * quat * pqr_hat
+def quat_rotate_point(point, quat):
+    w1, x1, y1, z1 = quat
+    norm = sqrt(w1**2+x1**2+y1**2+z1**2)
+    quatn = quat_scale(1/norm, quat)
+    # point = [x, y, z] -> quaternion [0, x, y, z]
+    p = [0] + point
+    q_inv = [quatn[0], -quatn[1], -quatn[2], -quatn[3]]
+    p_rot = quat_product(quat_product(quatn, p), q_inv)
+    return p_rot[1:]  # vector part only
 
+_quat = Quaternion(qw, qx, qy, qz)
+_quat_inv = Quaternion(qw, -qx, -qy, -qz)
+quat = [qw, qx, qy, qz]
+quat_inv = [qw, -qx, -qy, -qz]
+
+_a_NED = Quaternion.rotate_point([ax,ay,az], _quat)
+a_NED = quat_rotate_point([ax,ay,az], quat)
+# print(a_NED)
+print(simplify(a_NED[0] - _a_NED[0]))
+print(simplify(a_NED[1] - _a_NED[1]))
+print(simplify(a_NED[2] - _a_NED[2]))
+
+_pqr_hat = Quaternion(0, p-lp-wp, q-lq-wq, r-lr-wr)
+_q_dot = 0.5 * _quat * _pqr_hat
+pqr_hat = [0, p-lp-wp, q-lq-wq, r-lr-wr]
+q_dot = quat_scale(0.5, quat_product(quat, pqr_hat))
+print(simplify(q_dot[0]-_q_dot.a))
+print(simplify(q_dot[1]-_q_dot.b))
+print(simplify(q_dot[2]-_q_dot.c))
+print(simplify(q_dot[3]-_q_dot.d))
+
+raise Exception
 f_continuous = Matrix([
     vx,
     vy,
