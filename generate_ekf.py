@@ -39,28 +39,19 @@ def quat_rotate_point(point, quat):
     p_rot = quat_product(quat_product(quatn, p), q_inv)
     return p_rot[1:]  # vector part only
 
-_quat = Quaternion(qw, qx, qy, qz)
-_quat_inv = Quaternion(qw, -qx, -qy, -qz)
+# _quat = Quaternion(qw, qx, qy, qz)
+# _quat_inv = Quaternion(qw, -qx, -qy, -qz)
 quat = [qw, qx, qy, qz]
 quat_inv = [qw, -qx, -qy, -qz]
 
-_a_NED = Quaternion.rotate_point([ax,ay,az], _quat)
+# _a_NED = Quaternion.rotate_point([ax,ay,az], _quat)
 a_NED = quat_rotate_point([ax,ay,az], quat)
-# print(a_NED)
-print(simplify(a_NED[0] - _a_NED[0]))
-print(simplify(a_NED[1] - _a_NED[1]))
-print(simplify(a_NED[2] - _a_NED[2]))
 
-_pqr_hat = Quaternion(0, p-lp-wp, q-lq-wq, r-lr-wr)
-_q_dot = 0.5 * _quat * _pqr_hat
+# _pqr_hat = Quaternion(0, p-lp-wp, q-lq-wq, r-lr-wr)
+# _q_dot = 0.5 * _quat * _pqr_hat
 pqr_hat = [0, p-lp-wp, q-lq-wq, r-lr-wr]
 q_dot = quat_scale(0.5, quat_product(quat, pqr_hat))
-print(simplify(q_dot[0]-_q_dot.a))
-print(simplify(q_dot[1]-_q_dot.b))
-print(simplify(q_dot[2]-_q_dot.c))
-print(simplify(q_dot[3]-_q_dot.d))
 
-raise Exception
 f_continuous = Matrix([
     vx,
     vy,
@@ -68,10 +59,10 @@ f_continuous = Matrix([
     a_NED[0],
     a_NED[1],
     a_NED[2] + g,
-    q_dot.a,
-    q_dot.b,
-    q_dot.c,
-    q_dot.d,
+    q_dot[0],
+    q_dot[1],
+    q_dot[2],
+    q_dot[3],
     #0,0,0,0,0,0
     wbx, wby, wbz, wbp, wbq, wbr,
     0,0,0,0,0,0,0
@@ -93,10 +84,10 @@ for p3d in points_3d:
     # point
     px, py, pz = p3d
     # from world to body coordinates
-    p_body = Quaternion.rotate_point([px-x, py-y, pz-z], quat_inv)
+    p_body = quat_rotate_point([px-x, py-y, pz-z], quat_inv)
     px, py, pz = p_body
     # from body to camera coordinates
-    p_cam = Quaternion.rotate_point([px-ex, py-ey, pz-z], Quaternion(eqw, -eqx, -eqy, -eqz))
+    p_cam = quat_rotate_point([px-ex, py-ey, pz-z], [eqw, -eqx, -eqy, -eqz])
     px, py, pz = p_cam
     # camera coordinates to opencv convention
     px, py, pz = py, pz, px
