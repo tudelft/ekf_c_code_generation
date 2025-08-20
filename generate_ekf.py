@@ -76,11 +76,21 @@ for p3d in points_3d:
     v = py*fy/pz + cy
     points_2d.append((u,v))
 
+h = []
+for p in points_2d:
+    h.append(p[0])
+    h.append(p[1])
+h = Matrix(h)
+print(h)
+print(h.shape)
 
+print('jacobians')
 # matrices:
 F = f.jacobian(X)
 L = f.jacobian(W)
+print('H jacobian')
 H = h.jacobian(X)
+print('Done')
 
 # substitute W with 0
 f = f.subs([(w,0) for w in W])
@@ -104,10 +114,12 @@ from sympy.codegen.ast import CodeBlock, Assignment
 # EKF equations from: https://en.wikipedia.org/wiki/Extended_Kalman_filter: Non-additive noise formulation and equations
 
 # PREDICTION STEP
+print('prediction formulas')
 Xpred = f
 Ppred = F*P*F.T + L*Q*L.T
 
 # UPDATE STEP
+print('update formulas')
 S = H*P*H.T + R
 sdim = S.shape[0]
 xdim = len(X)
