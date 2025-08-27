@@ -8,10 +8,9 @@
 
 #include <stdint.h>
 
-#define N_STATES 23
+#define N_STATES 22
 #define N_INPUTS 6
-#define N_PROC_NOISES 12
-#define N_MEASUREMENTS 32
+#define N_PROC_NOISES 18
 
 // getters
 float* ekf_get_X(void);     // get state vector
@@ -22,12 +21,22 @@ float* ekf_get_P(void);     // get covariance matrix (lower diagonal)
 
 // setters
 void ekf_set_Q(float Q[N_INPUTS]);                    // set process noise covariance matrix diagonal
-void ekf_set_R(float R[N_MEASUREMENTS]);              // set measurement noise covariance matrix diagonal
 void ekf_set_X(float X0[N_STATES]);                   // set state vector
 void ekf_set_P_diag(float P_diag[N_STATES]);          // set covariance matrix diagonal
 
-// prediction and update functions
+// prediction function
 void ekf_predict(float U[N_INPUTS], float dt);
-void ekf_update(float Z[N_MEASUREMENTS]);
+
+// update functions (for different measurement models)
+// pos measurement model:
+#define N_MEASUREMENTS_POS 
+void ekf_set_R_pos(float R_diag[N_MEASUREMENTS_POS]); // set measurement noise covariance matrix diagonal
+void ekf_update_pos(float Z[N_MEASUREMENTS_POS]);
+
+// pos_quat measurement model:
+#define N_MEASUREMENTS_POS_QUAT 
+void ekf_set_R_pos_quat(float R_diag[N_MEASUREMENTS_POS_QUAT]); // set measurement noise covariance matrix diagonal
+void ekf_update_pos_quat(float Z[N_MEASUREMENTS_POS_QUAT]);
+
 
 #endif // EKF_CALC_H

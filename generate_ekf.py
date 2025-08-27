@@ -1,9 +1,10 @@
 from sympy import *
+from sympy.codegen.ast import CodeBlock, Assignment
 
 # states, inputs, and process noise
-X=Matrix(symbols('X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8] X[9] X[10] X[11] X[12] X[13] X[14] X[15] X[16] X[17] X[18] X[19] X[20] X[21] X[22]'))
+X=Matrix(symbols('X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8] X[9] X[10] X[11] X[12] X[13] X[14] X[15] X[16] X[17] X[18] X[19] X[20] X[21]'))
 U=Matrix(symbols('U[0] U[1] U[2] U[3] U[4] U[5]'))
-W=Matrix(symbols('W[0] W[1] W[2] W[3] W[4] W[5] W[6] W[7] W[8] W[9] W[10] W[11]'))
+W=Matrix(symbols('W[0] W[1] W[2] W[3] W[4] W[5] W[6] W[7] W[8] W[9] W[10] W[11], W[12], W[13], W[14], W[15], W[16], W[17]'))
 
 # time step
 dt=symbols('dt')
@@ -11,9 +12,9 @@ dt=symbols('dt')
 # continuous dynamics:
 g = 9.81
 # pos, vel, att, acc bias, gyro bias, extrinsics
-x,y,z,vx,vy,vz,qw,qx,qy,qz,lx,ly,lz,lp,lq,lr,ex,ey,ez,eqw,eqx,eqy,eqz = X
+x,y,z,vx,vy,vz,qw,qx,qy,qz,lx,ly,lz,lp,lq,lr,ex,ey,ez,ephi,etheta,epsi = X
 ax,ay,az,p,q,r = U
-wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr = W
+wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr,wex,wey,wez,wephi,wetheta,wepsi = W
 
 quat = Quaternion(qw, qx, qy, qz) # does norm 1 automatically renormaize?
 quat_inv = Quaternion(qw, -qx, -qy, -qz)
@@ -28,7 +29,6 @@ a_NED = Quaternion.rotate_point([ax-lx-wx,ay-ly-wy,az-lz-wz], quat)
 #    [pqr_hat[2], +pqr_hat[1], -pqr_hat[0], 0],
 #])
 #q_dot = 0.5*Omega_pqr * Matrix([quat.a, quat.b, quat.c, quat.d])
-
 pqr_hat = Quaternion(0, p-lp-wp, q-lq-wq, r-lr-wr)
 q_dot = 0.5 * quat * pqr_hat
 
@@ -43,46 +43,180 @@ f_continuous = Matrix([
     q_dot.b,
     q_dot.c,
     q_dot.d,
-    #0,0,0,0,0,0
     wbx, wby, wbz, wbp, wbq, wbr,
-    0,0,0,0,0,0,0
+    wex, wey, wez, wephi, wetheta, wepsi
 ])
 
 # discretized dynamics:
 f = X + f_continuous*dt
 
-# output function (measurement model):
-use_quat = symbols('ekf_use_quat')
-h = Matrix([x,y,z,use_quat*qw,use_quat*qx,use_quat*qy,use_quat*qz])
+# MEASUREMENT MODELS
+measurement_models = {}
 
-# projected points measurement
-fx, fy, cx, cy = symbols('fx fy cx cy')
-max_points = 16
-points_3d = [symbols(f'p3d{i}_x p3d{i}_y p3d{i}_z') for i in range(max_points)]
-points_2d = []
-for p3d in points_3d:
-    # point
-    px, py, pz = p3d
-    # from world to body coordinates
-    p_body = Quaternion.rotate_point([px-x, py-y, pz-z], quat_inv)
-    px, py, pz = p_body
-    # from body to camera coordinates
-    p_cam = Quaternion.rotate_point([px-ex, py-ey, pz-z], Quaternion(eqw, -eqx, -eqy, -eqz))
-    px, py, pz = p_cam
-    # camera coordinates to opencv convention
-    px, py, pz = py, pz, px
-    # project to 2d
-    u = px*fx/pz + cx
-    v = py*fy/pz + cy
-    points_2d.append((u,v))
+# position measurement
+h = Matrix([x,y,z])
+H = h.jacobian(X)
+measurement_models['pos'] = (h, H)
 
-h = []
-for p in points_2d:
-    h.append(p[0])
-    h.append(p[1])
-h = Matrix(h)
-print(h)
-print(h.shape)
+# position + quat measurement
+h = Matrix([x,y,z,qw,qx,qy,qz])
+H = h.jacobian(X)
+measurement_models['pos_quat'] = (h, H)
+
+# # projected points measurement 1-16
+# fx, fy, cx, cy = symbols('fx fy cx cy')
+# Rx = Matrix([[1, 0, 0], [0, cos(ephi), -sin(ephi)], [0, sin(ephi), cos(ephi)]])
+# Ry = Matrix([[cos(etheta), 0, sin(etheta)],[0, 1, 0],[-sin(etheta), 0, cos(etheta)]])
+# Rz = Matrix([[cos(epsi), -sin(epsi), 0],[sin(epsi), cos(epsi), 0], [0, 0, 1]])
+# Re = Rz*Ry*Rx
+# max_points = 16
+# points_3d = [symbols(f'p3d{i}_x p3d{i}_y p3d{i}_z') for i in range(max_points)]
+# points_2d = []
+# for p3d in points_3d:
+#     # point
+#     px, py, pz = p3d
+#     # from world to body coordinates
+#     p_body = Quaternion.rotate_point([px-x, py-y, pz-z], quat_inv)
+#     px, py, pz = p_body
+#     # from body to camera coordinates
+#     # p_cam = Quaternion.rotate_point([px-ex, py-ey, pz-z], Quaternion(eqw, -eqx, -eqy, -eqz))
+#     p_cam = Re.T * Matrix([px-ex, py-ey, pz-z])
+#     px, py, pz = p_cam
+#     # camera coordinates to opencv convention
+#     px, py, pz = py, pz, px
+#     # project to 2d
+#     u = px*fx/pz + cx
+#     v = py*fy/pz + cy
+#     points_2d.append((u,v))
+
+# h = []
+# for p in points_2d:
+#     h.append(p[0])
+#     h.append(p[1])
+# h = Matrix(h)
+
+# for i in range(max_points):
+#     hi = Matrix(h[0:2*(i+1)])
+#     H = hi.jacobian(X)
+#     measurement_models[f'points_{i+1}'] = (h, H)
+
+
+# CODE GENERATION
+def renaming(code):
+    code = code.replace('sin(', 'sinf(')
+    code = code.replace('cos(', 'cosf(')
+    code = code.replace('tan(', 'tanf(')
+    code = code.replace('pow(', 'powf(')
+    code = code.replace('\n', '\n\t')
+    return code
+
+symmetric_indexing = lambda i,j: int(j*(j+1)/2+i) if j>=i else int(i*(i+1)/2+j)
+P = Matrix([[symbols(f'P[{symmetric_indexing(i,j)}]') for j in range(len(X))] for i in range(len(X))])
+Q = Matrix([[symbols(f'Q[{i}]') if i==j else '0' for j in range(len(W))] for i in range(len(W))])
+
+# Jacobians
+F = f.jacobian(X)
+L = f.jacobian(W)
+
+# substitute W with 0
+f = f.subs([(w,0) for w in W])
+F = F.subs([(w,0) for w in W])
+L = L.subs([(w,0) for w in W])
+
+Xpred = f
+Ppred = F*P*F.T + L*Q*L.T
+
+# assignments
+Xpred_assigments = [Assignment(symbols(f'X_new[{i}]'), Xpred[i]) for i in range(len(X))]
+Ppred_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Ppred[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
+
+# code generation
+prediction_code = CodeBlock(*Xpred_assigments, *Ppred_assigments)
+prediction_code = prediction_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+prediction_code = prediction_code.simplify()
+prediction_code_N_tmps = len([s for s in prediction_code.left_hand_sides if s.name.startswith('tmp')])
+prediction_code = ccode(prediction_code)
+prediction_code = renaming(prediction_code)
+
+# UPDATE CODE
+measurements = []
+for name, (h, H) in measurement_models.items():
+    num_measurements = len(h)
+    num_states = len(X)
+    
+    # symbols
+    Z = Matrix([symbols(f'Z[{i}]') for i in range(num_measurements)])
+    R = Matrix([[symbols(f'R[{i}]') if i==j else '0' for j in range(num_measurements)] for i in range(num_measurements)])
+    K = Matrix([[symbols(f'K[{j*num_states + i}]') for j in range(num_measurements)] for i in range(num_states)])
+    
+    S = H*P*H.T + R
+    HP = H*P
+    sdim = S.shape[0]
+    xdim = len(X)
+    
+    Xup = X + K*(Z - h)
+    Pup = (eye(len(X)) - K*H)*P
+    
+    S_assigments = [Assignment(symbols(f'S[{j*sdim+i}]'), S[i,j]) for i in range(len(Z)) for j in range(len(Z))] # both triangular, full matrix
+    HP_assigments = [Assignment(symbols(f'HP[{j*sdim+i}]'), HP[i,j]) for j in range(xdim) for i in range(sdim)]
+
+    Xup_assigments = [Assignment(symbols(f'X_new[{i}]'), Xup[i]) for i in range(len(X))]
+    Pup_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Pup[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
+
+    # code generation
+    s_code = CodeBlock(*S_assigments, *HP_assigments)
+    s_code = s_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+    s_code = s_code.simplify()
+    s_code_N_tmps = len([s for s in s_code.left_hand_sides if s.name.startswith('tmp')])
+    s_code = ccode(s_code)
+    s_code = renaming(s_code)
+    
+    update_code = CodeBlock(*Xup_assigments, *Pup_assigments)
+    update_code = update_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+    update_code = update_code.simplify()
+    update_code_N_tmps = len([s for s in update_code.left_hand_sides if s.name.startswith('tmp')])
+    update_code = ccode(update_code)
+    update_code = renaming(update_code)
+    
+    # update_code[name] = (s_code, u_code, max(s_code_N_tmps, u_code_N_tmps))
+    measurements.append({
+        'name': name,
+        'num_measurements': num_measurements,
+        'prepare_gain_code': s_code,
+        'update_code': update_code,
+        'num_tmps': max(s_code_N_tmps, update_code_N_tmps)
+    })
+    
+# fill in the jinja template    
+from os import path, makedirs
+from jinja2 import Environment, FileSystemLoader
+
+# set data used in templates
+data = {}
+data['lenX'] = len(X)
+data['lenQ'] = len(W)
+data['lenU'] = len(U)
+data['prediction_code'] = prediction_code
+data['prediction_num_tmps'] = prediction_code_N_tmps
+data['measurements'] = measurements
+
+# make dirs 
+home_path = path.dirname(__file__)
+code_path = path.join(home_path, 'c_code')
+makedirs(code_path, exist_ok=True)
+
+# create files from templates
+files = [ "ekf_calc.h", "ekf_calc.c" ]
+
+env = Environment(loader = FileSystemLoader(home_path),
+                  trim_blocks=True, lstrip_blocks=True)
+
+for filename in files:
+    template = env.get_template(f'{filename}.j2')
+    with open(path.join(code_path, filename), 'w') as file:
+        file.write(template.render(data))
+
+raise Exception
 
 print('jacobians')
 # matrices:

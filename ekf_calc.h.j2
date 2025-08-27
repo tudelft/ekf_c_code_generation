@@ -11,7 +11,6 @@
 #define N_STATES {{ lenX }}
 #define N_INPUTS {{ lenU }}
 #define N_PROC_NOISES {{ lenQ }}
-#define N_MEASUREMENTS {{ lenh }}
 
 // getters
 float* ekf_get_X(void);     // get state vector
@@ -22,13 +21,20 @@ float* ekf_get_P(void);     // get covariance matrix (lower diagonal)
 
 // setters
 void ekf_set_Q(float Q[N_INPUTS]);                    // set process noise covariance matrix diagonal
-void ekf_set_R(float R[N_MEASUREMENTS]);              // set measurement noise covariance matrix diagonal
 void ekf_set_X(float X0[N_STATES]);                   // set state vector
 void ekf_set_P_diag(float P_diag[N_STATES]);          // set covariance matrix diagonal
 
-// prediction and update functions
+// prediction function
 void ekf_predict(float U[N_INPUTS], float dt);
-void ekf_update(float Z[N_MEASUREMENTS]);
+
+// update functions (for different measurement models)
+{% for meas in measurements %}
+// {{meas.name}} measurement model:
+#define N_MEASUREMENTS_{{meas.name|upper}} {{meas.lenZ}}
+void ekf_set_R_{{meas.name}}(float R_diag[N_MEASUREMENTS_{{meas.name|upper}}]); // set measurement noise covariance matrix diagonal
+void ekf_update_{{meas.name}}(float Z[N_MEASUREMENTS_{{meas.name|upper}}]);
+
+{% endfor %}
 
 #endif // EKF_CALC_H
 

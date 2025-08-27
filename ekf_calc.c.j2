@@ -9,10 +9,7 @@
 #include "common/maths.h"
 #include <stdbool.h>
 
-bool ekf_use_quat = false;
-
-float ekf_Q[N_PROC_NOISES];         // Kalman filter process noise covariance matrix (diagonal)
-float ekf_R[N_MEASUREMENTS];   // Kalman filter measurement noise covariance matrix (diagonal)
+float ekf_Q[N_PROC_NOISES];    // Kalman filter process noise covariance matrix (diagonal)
 
 // state
 float ekf_X[N_STATES];
@@ -22,16 +19,6 @@ float ekf_X_new[N_STATES];
 float ekf_P_upper_diagonal[N_STATES*(N_STATES+1)/2];
 float ekf_P_upper_diagonal_new[N_STATES*(N_STATES+1)/2];
 
-// gain matrix calculations
-float ekf_S_full[N_MEASUREMENTS*N_MEASUREMENTS];
-float ekf_S_chol[N_MEASUREMENTS*N_MEASUREMENTS];
-float ekf_S_iDiag[N_MEASUREMENTS];
-float ekf_HP[N_STATES*N_MEASUREMENTS];
-float ekf_K[N_STATES*N_MEASUREMENTS];
-
-// temporary variables
-float tmp[{{ lenTmp }}];
-
 // pointers
 float *X = ekf_X;
 float *X_new = ekf_X_new;
@@ -39,13 +26,7 @@ float *X_new = ekf_X_new;
 float *P = ekf_P_upper_diagonal;
 float *P_new = ekf_P_upper_diagonal_new;
 
-float *S = ekf_S_full;
-float *HP = ekf_HP;
-float *K = ekf_K;
-
-// renaming
 float *Q = ekf_Q;
-float *R = ekf_R;
 
 // pointer for swapping
 float *swap_ptr;
@@ -61,12 +42,6 @@ float* ekf_get_P(void) {
 void ekf_set_Q(float Q[N_INPUTS]) {
     for (int i=0; i<N_PROC_NOISES; i++) {
         ekf_Q[i] = Q[i];
-    }
-}
-
-void ekf_set_R(float R[N_MEASUREMENTS]) {
-    for (int i=0; i<N_MEASUREMENTS; i++) {
-        ekf_R[i] = R[i];
     }
 }
 
@@ -87,18 +62,10 @@ void ekf_set_P_diag(float P_diag[N_STATES]) {
     }
 }
 
-void normalize_quaternion(float* q) {
-    float norm = q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3];
-    if (norm > 1e-4f) {
-        float inorm = 1.f / sqrtf(norm);
-        q[0] *= inorm;
-        q[1] *= inorm;
-        q[2] *= inorm;
-        q[3] *= inorm;
-    }
-}
-
 void ekf_predict(float U[N_INPUTS], float dt) {
+    // temporary variables used in prediction step
+    static float tmp[{{prediction_num_tmps}}];
+
     // PREDICTION STEP X_new, P_new = ...
     {{ prediction_code }}
 
@@ -107,76 +74,66 @@ void ekf_predict(float U[N_INPUTS], float dt) {
     X = X_new;
     X_new = swap_ptr;
 
-    normalize_quaternion(X+6);
-
     swap_ptr = P;
     P = P_new;
     P_new = swap_ptr;
 }
 
-void ekf_update(float Z[N_MEASUREMENTS]) {
+{% for meas in measurements %}
+// {{meas.name}} measurement model:
+#define N_MEASUREMENTS_{{meas.name|upper}} {{meas.num_measurements}}
+float ekf_R_{{meas.name}}[N_MEASUREMENTS_{{meas.name|upper}}];   // Kalman filter measurement noise covariance matrix (diagonal)
+
+void ekf_set_R_{{meas.name}}(float R_diag[N_MEASUREMENTS_{{meas.name|upper}}]) {
+    for (int i=0; i<N_MEASUREMENTS_{{meas.name|upper}}; i++) {
+        ekf_R_{{meas.name}}[i] = R_diag[i];
+    }
+}
+
+void ekf_update_{{meas.name}}(float Z[N_MEASUREMENTS_{{meas.name|upper}}]) {
+    // temporary variables used in update step
+    static float tmp[{{meas.num_tmps}}];
+    
+    // gain matrices
+    static float ekf_S_full[N_MEASUREMENTS_{{meas.name|upper}}*N_MEASUREMENTS_{{meas.name|upper}}];
+    static float ekf_S_chol[N_MEASUREMENTS_{{meas.name|upper}}*N_MEASUREMENTS_{{meas.name|upper}}];
+    static float ekf_S_iDiag[N_MEASUREMENTS_{{meas.name|upper}}];
+    static float ekf_HP[N_STATES*N_MEASUREMENTS_{{meas.name|upper}}];
+    static float ekf_K[N_STATES*N_MEASUREMENTS_{{meas.name|upper}}];
+
+    // renaming
+    float *S = ekf_S_full;
+    float *HP = ekf_HP;
+    float *K = ekf_K;
+    float *R = ekf_R_{{meas.name}};
+    float *S_chol = ekf_S_chol;
+    float *S_iDiag = ekf_S_iDiag;
+
     // prepare gain calculation
-    {{ prepare_gain_code }}
+    {{ meas.prepare_gain_code }}
 
     // we have symmetric S and PHT in col major.
     // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
-    if (!ekf_use_quat) {
-        // 3 state kalman update, yay
-        float S_small[3*3];
-        for (int i = 0; i < 3; i++) {
-            for (int j = 0; j < 3; j++) {
-                S_small[i + j*3] = S[i + j*N_MEASUREMENTS];
-            }
-        }
-        float k_row[3];
-        float S_small_chol[3*3];
-        chol(S_small_chol, S_small, ekf_S_iDiag, 3);
-        for (int i = 0; i < N_STATES; i++) {
-            chol_solve(S_small_chol, ekf_S_iDiag, 3, (HP+(i*N_MEASUREMENTS)), k_row);
-            for (int j = 0; j < 3; j++) {
-                K[i + j*N_STATES] = k_row[j];
-            }
-            for (int j = 3; j < N_MEASUREMENTS; j++) {
-                K[i + j*N_STATES] = 0.f;
-            }
-        }
-    } else {
-        // full state kalman update, meh
-        chol(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS);
-        for (int i = 0; i < N_STATES; i++) {
-            float k_row[N_MEASUREMENTS];
-            chol_solve(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS, (HP+(i*N_MEASUREMENTS)), k_row);
-            for (int j = 0; j < N_MEASUREMENTS; j++) {
-                K[i + j*N_STATES] = k_row[j];
-            }
-        }
-    }
-
-    float qerror2 = 0.f;
-    for (int i = 0; i < 4; i++) {
-        qerror2 += (Z[3+i] - X[6+i])*(Z[3+i] - X[6+i]);
-    }
-
-    if (qerror2 > 2.f) {
-        // quaternion error is too big, negating the measured quaternion will
-        // give better convergence
-        for (int i = 0; i < 4; i++) {
-            Z[3+i] = -Z[3+i];
+    // full state kalman update
+    chol(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS_{{meas.name|upper}});
+    for (int i = 0; i < N_STATES; i++) {
+        float k_row[N_MEASUREMENTS_{{meas.name|upper}}];
+        chol_solve(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS_{{meas.name|upper}}, (HP+(i*N_MEASUREMENTS_{{meas.name|upper}})), k_row);
+        for (int j = 0; j < N_MEASUREMENTS_{{meas.name|upper}}; j++) {
+            K[i + j*N_STATES] = k_row[j];
         }
     }
 
     // UPDATE STEP X_new, P_new = ...
-    {{ update_code }}
+    {{ meas.update_code }}
 
     // swap X, X_new and P, P_new pointers
     swap_ptr = X;
     X = X_new;
     X_new = swap_ptr;
 
-    normalize_quaternion(X+6);
-
     swap_ptr = P;
     P = P_new;
     P_new = swap_ptr;
 }
-
+{% endfor %}
