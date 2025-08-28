@@ -63,43 +63,42 @@ h = Matrix([x,y,z,qw,qx,qy,qz])
 H = h.jacobian(X)
 measurement_models['pos_quat'] = (h, H)
 
-# # projected points measurement 1-16
-# fx, fy, cx, cy = symbols('fx fy cx cy')
-# Rx = Matrix([[1, 0, 0], [0, cos(ephi), -sin(ephi)], [0, sin(ephi), cos(ephi)]])
-# Ry = Matrix([[cos(etheta), 0, sin(etheta)],[0, 1, 0],[-sin(etheta), 0, cos(etheta)]])
-# Rz = Matrix([[cos(epsi), -sin(epsi), 0],[sin(epsi), cos(epsi), 0], [0, 0, 1]])
-# Re = Rz*Ry*Rx
-# max_points = 16
-# points_3d = [symbols(f'p3d{i}_x p3d{i}_y p3d{i}_z') for i in range(max_points)]
-# points_2d = []
-# for p3d in points_3d:
-#     # point
-#     px, py, pz = p3d
-#     # from world to body coordinates
-#     p_body = Quaternion.rotate_point([px-x, py-y, pz-z], quat_inv)
-#     px, py, pz = p_body
-#     # from body to camera coordinates
-#     # p_cam = Quaternion.rotate_point([px-ex, py-ey, pz-z], Quaternion(eqw, -eqx, -eqy, -eqz))
-#     p_cam = Re.T * Matrix([px-ex, py-ey, pz-z])
-#     px, py, pz = p_cam
-#     # camera coordinates to opencv convention
-#     px, py, pz = py, pz, px
-#     # project to 2d
-#     u = px*fx/pz + cx
-#     v = py*fy/pz + cy
-#     points_2d.append((u,v))
+# projected points measurement 1-16
+fx, fy, cx, cy = symbols('fx fy cx cy')
+Rx = Matrix([[1, 0, 0], [0, cos(ephi), -sin(ephi)], [0, sin(ephi), cos(ephi)]])
+Ry = Matrix([[cos(etheta), 0, sin(etheta)],[0, 1, 0],[-sin(etheta), 0, cos(etheta)]])
+Rz = Matrix([[cos(epsi), -sin(epsi), 0],[sin(epsi), cos(epsi), 0], [0, 0, 1]])
+Re = Rz*Ry*Rx
+max_points = 16
+points_3d = [symbols(f'p3d{i}_x p3d{i}_y p3d{i}_z') for i in range(max_points)]
+points_2d = []
+for p3d in points_3d:
+    # point
+    px, py, pz = p3d
+    # from world to body coordinates
+    p_body = Quaternion.rotate_point([px-x, py-y, pz-z], quat_inv)
+    px, py, pz = p_body
+    # from body to camera coordinates
+    # p_cam = Quaternion.rotate_point([px-ex, py-ey, pz-z], Quaternion(eqw, -eqx, -eqy, -eqz))
+    p_cam = Re.T * Matrix([px-ex, py-ey, pz-z])
+    px, py, pz = p_cam
+    # camera coordinates to opencv convention
+    px, py, pz = py, pz, px
+    # project to 2d
+    u = px*fx/pz + cx
+    v = py*fy/pz + cy
+    points_2d.append((u,v))
 
-# h = []
-# for p in points_2d:
-#     h.append(p[0])
-#     h.append(p[1])
+h_ = []
+for p in points_2d:
+    h_.append(p[0])
+    h_.append(p[1])
 # h = Matrix(h)
 
-# for i in range(max_points):
-#     hi = Matrix(h[0:2*(i+1)])
-#     H = hi.jacobian(X)
-#     measurement_models[f'points_{i+1}'] = (h, H)
-
+for i in range(max_points):
+    hi = Matrix(h_[0:2*(i+1)])
+    Hi = hi.jacobian(X)
+    measurement_models[f'points_{i+1}'] = (hi, Hi)
 
 # CODE GENERATION
 def renaming(code):
@@ -143,6 +142,7 @@ measurements = []
 for name, (h, H) in measurement_models.items():
     num_measurements = len(h)
     num_states = len(X)
+    print(f'Generating code for measurement model {name} with {num_measurements} measurements')
     
     # symbols
     Z = Matrix([symbols(f'Z[{i}]') for i in range(num_measurements)])
