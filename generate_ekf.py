@@ -69,7 +69,7 @@ Rx = Matrix([[1, 0, 0], [0, cos(ephi), -sin(ephi)], [0, sin(ephi), cos(ephi)]])
 Ry = Matrix([[cos(etheta), 0, sin(etheta)],[0, 1, 0],[-sin(etheta), 0, cos(etheta)]])
 Rz = Matrix([[cos(epsi), -sin(epsi), 0],[sin(epsi), cos(epsi), 0], [0, 0, 1]])
 Re = Rz*Ry*Rx
-max_points = 16
+max_points = 1
 points_3d = [symbols(f'p3d{i}_x p3d{i}_y p3d{i}_z') for i in range(max_points)]
 points_2d = []
 for p3d in points_3d:
@@ -98,7 +98,10 @@ for p in points_2d:
 for i in range(max_points):
     hi = Matrix(h_[0:2*(i+1)])
     Hi = hi.jacobian(X)
-    measurement_models[f'points_{i+1}'] = (hi, Hi)
+    params = [fx, fy, cx, cy]
+    for p in points_3d[0:i+1]:
+        params.extend(p)
+    measurement_models[f'points_{i+1}'] = (hi, Hi, params)
 
 # CODE GENERATION
 def renaming(code):
@@ -139,7 +142,14 @@ prediction_code = renaming(prediction_code)
 
 # UPDATE CODE
 measurements = []
-for name, (h, H) in measurement_models.items():
+for name, val in measurement_models.items():
+    h, H = val[0], val[1]
+    if len(val) > 2:
+        params = val[2]
+    else:
+        params = []
+    print(params)
+    
     num_measurements = len(h)
     num_states = len(X)
     print(f'Generating code for measurement model {name} with {num_measurements} measurements')
@@ -184,7 +194,9 @@ for name, (h, H) in measurement_models.items():
         'num_measurements': num_measurements,
         'prepare_gain_code': s_code,
         'update_code': update_code,
-        'num_tmps': max(s_code_N_tmps, update_code_N_tmps)
+        'num_tmps': max(s_code_N_tmps, update_code_N_tmps),
+        'num_params': len(params),
+        'param_names': [p.name for p in params]
     })
     
 # fill in the jinja template    

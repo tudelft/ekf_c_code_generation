@@ -81,7 +81,6 @@ void ekf_predict(float U[N_INPUTS], float dt) {
 
 {% for meas in measurements %}
 // {{meas.name}} measurement model:
-#define N_MEASUREMENTS_{{meas.name|upper}} {{meas.num_measurements}}
 float ekf_R_{{meas.name}}[N_MEASUREMENTS_{{meas.name|upper}}];   // Kalman filter measurement noise covariance matrix (diagonal)
 
 void ekf_set_R_{{meas.name}}(float R_diag[N_MEASUREMENTS_{{meas.name|upper}}]) {
@@ -90,7 +89,12 @@ void ekf_set_R_{{meas.name}}(float R_diag[N_MEASUREMENTS_{{meas.name|upper}}]) {
     }
 }
 
-void ekf_update_{{meas.name}}(float Z[N_MEASUREMENTS_{{meas.name|upper}}]) {
+void ekf_update_{{meas.name}}(float Z[N_MEASUREMENTS_{{meas.name|upper}}]{% if meas.num_params > 0 %}, float param[{{ meas.num_params }}]{% endif %}) {
+    // parameters
+    {% for name in meas.param_names %}
+    float {{name}} = param[{{loop.index0}}];
+    {% endfor %}
+
     // temporary variables used in update step
     static float tmp[{{meas.num_tmps}}];
     
