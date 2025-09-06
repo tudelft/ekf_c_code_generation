@@ -12,13 +12,13 @@ dt=symbols('dt')
 # continuous dynamics:
 g = 9.81
 # pos, vel, att, acc bias, gyro bias, extrinsics
-x,y,z,vx,vy,vz,qw,qx,qy,qz,lx,ly,lz,lp,lq,lr,ex,ey,ez,ephi,etheta,epsi = X
+x,y,z,vx,vy,vz,qw,qx,qy,qz,bx,by,bz,bp,bq,br,ex,ey,ez,ephi,etheta,epsi = X
 ax,ay,az,p,q,r = U
 wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr,wex,wey,wez,wephi,wetheta,wepsi = W
 
 quat = Quaternion(qw, qx, qy, qz) # does norm 1 automatically renormaize?
 quat_inv = Quaternion(qw, -qx, -qy, -qz)
-a_NED = Quaternion.rotate_point([ax-lx-wx,ay-ly-wy,az-lz-wz], quat)
+a_NED = Quaternion.rotate_point([ax-bx-wx,ay-by-wy,az-bz-wz], quat)
 
 # https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
 #pqr_hat = Matrix([p-lp-wp, q-lq-wq, r-lr-wr])
@@ -29,7 +29,7 @@ a_NED = Quaternion.rotate_point([ax-lx-wx,ay-ly-wy,az-lz-wz], quat)
 #    [pqr_hat[2], +pqr_hat[1], -pqr_hat[0], 0],
 #])
 #q_dot = 0.5*Omega_pqr * Matrix([quat.a, quat.b, quat.c, quat.d])
-pqr_hat = Quaternion(0, p-lp-wp, q-lq-wq, r-lr-wr)
+pqr_hat = Quaternion(0, p-bp-wp, q-bq-wq, r-br-wr)
 q_dot = 0.5 * quat * pqr_hat
 
 f_continuous = Matrix([
@@ -49,6 +49,44 @@ f_continuous = Matrix([
 
 # discretized dynamics:
 f = X + f_continuous*dt
+
+# NORMALIZATION:
+q_norm = sqrt(qw**2 + qx**2 + qy**2 + qz**2)
+# clamp
+def clamp(v, vmin, vmax): return Max(Min(v, vmax), vmin)
+
+# bias bounds
+bx_min, bx_max, by_min, by_max, bz_min, bz_max, bp_min, bp_max, bq_min, bq_max, br_min, br_max = symbols('bx_min bx_max by_min by_max bz_min bz_max bp_min bp_max bq_min bq_max br_min br_max')
+# extrinsic bounds
+ex_min, ex_max, ey_min, ey_max, ez_min, ez_max, ephi_min, ephi_max, etheta_min, etheta_max, epsi_min, epsi_max = symbols('ex_min ex_max ey_min ey_max ez_min ez_max ephi_min ephi_max etheta_min etheta_max epsi_min epsi_max')
+
+Xnorm = Matrix([
+    x, y, z,
+    vx, vy, vz,
+    qw/q_norm, qx/q_norm, qy/q_norm, qz/q_norm,
+    clamp(bx, bx_min, bx_max),
+    clamp(by, by_min, by_max),
+    clamp(bz, bz_min, bz_max),
+    clamp(bp, bp_min, bp_max),
+    clamp(bq, bq_min, bq_max),
+    clamp(br, br_min, br_max),
+    clamp(ex, ex_min, ex_max),
+    clamp(ey, ey_min, ey_max),
+    clamp(ez, ez_min, ez_max),
+    clamp(ephi, ephi_min, ephi_max),
+    clamp(etheta, etheta_min, etheta_max),
+    clamp(epsi, epsi_min, epsi_max)
+])
+
+# collect all min/max bounds in a single global_vars list
+global_vars = [
+    bx_min, bx_max, by_min, by_max, bz_min, bz_max,
+    bp_min, bp_max, bq_min, bq_max, br_min, br_max,
+    ex_min, ex_max, ey_min, ey_max, ez_min, ez_max,
+    ephi_min, ephi_max, etheta_min, etheta_max, epsi_min, epsi_max
+]
+global_vars_default = [-10,10]*12
+global_vars = list(zip([v.name for v in global_vars], global_vars_default))
 
 # MEASUREMENT MODELS
 measurement_models = {}
@@ -140,6 +178,24 @@ prediction_code_N_tmps = len([s for s in prediction_code.left_hand_sides if s.na
 prediction_code = ccode(prediction_code)
 prediction_code = renaming(prediction_code)
 
+# integrate code
+Xint_assignments = [Assignment(symbols(f'X_integrate[{i}]'), Xpred[i]) for i in range(len(X))]
+integrate_code = CodeBlock(*Xint_assignments)
+integrate_code = integrate_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+integrate_code = integrate_code.simplify()
+integrate_code_N_tmps = len([s for s in integrate_code.left_hand_sides if s.name.startswith('tmp')])
+integrate_code = ccode(integrate_code)
+integrate_code = renaming(integrate_code)
+
+# normalization code
+Xnorm_assigments = [Assignment(symbols(f'X_new[{i}]'), Xnorm[i]) for i in range(len(X))]
+norm_code = CodeBlock(*Xnorm_assigments)
+norm_code = norm_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+norm_code = norm_code.simplify()
+norm_code_N_tmps = len([s for s in norm_code.left_hand_sides if s.name.startswith('tmp')])
+norm_code = ccode(norm_code)
+norm_code = renaming(norm_code)
+
 # UPDATE CODE
 measurements = []
 for name, val in measurement_models.items():
@@ -210,6 +266,11 @@ data['lenQ'] = len(W)
 data['lenU'] = len(U)
 data['prediction_code'] = prediction_code
 data['prediction_num_tmps'] = prediction_code_N_tmps
+data['integrate_code'] = integrate_code
+data['integrate_num_tmps'] = integrate_code_N_tmps
+data['norm_code'] = norm_code
+data['norm_num_tmps'] = norm_code_N_tmps
+data['global_vars'] = global_vars
 data['measurements'] = measurements
 
 # make dirs 
@@ -227,174 +288,3 @@ for filename in files:
     template = env.get_template(f'{filename}.j2')
     with open(path.join(code_path, filename), 'w') as file:
         file.write(template.render(data))
-
-raise Exception
-
-print('jacobians')
-# matrices:
-F = f.jacobian(X)
-L = f.jacobian(W)
-print('H jacobian')
-H = h.jacobian(X)
-print('Done')
-
-# substitute W with 0
-f = f.subs([(w,0) for w in W])
-F = F.subs([(w,0) for w in W])
-L = L.subs([(w,0) for w in W])
-H = H.subs([(w,0) for w in W])
-
-# extra matrices
-symmetric_indexing = lambda i,j: int(j*(j+1)/2+i) if j>=i else int(i*(i+1)/2+j)
-P = Matrix([[symbols(f'P[{symmetric_indexing(i,j)}]') for j in range(len(X))] for i in range(len(X))])
-Q = Matrix([[symbols(f'Q[{i}]') if i==j else '0' for j in range(len(W))] for i in range(len(W))])
-R = Matrix([[symbols(f'R[{i}]') if i==j else '0' for j in range(len(h))] for i in range(len(h))])
-Z = Matrix([symbols(f'Z[{i}]') for i in range(len(h))])
-
-
-#%% generate code
-
-# from sympy import symbols, sin
-from sympy.codegen.ast import CodeBlock, Assignment
-
-# EKF equations from: https://en.wikipedia.org/wiki/Extended_Kalman_filter: Non-additive noise formulation and equations
-
-# PREDICTION STEP
-print('prediction formulas')
-Xpred = f
-Ppred = F*P*F.T + L*Q*L.T
-
-# UPDATE STEP
-print('update formulas')
-S = H*P*H.T + R
-sdim = S.shape[0]
-xdim = len(X)
-
-## old way with symbolic inversion
-#inv__ = invert_function(sdim)
-#iS = inv__(S)
-#K = P*H.T*iS
-
-## new way with numerical inversion
-HP = H*P
-# numerical solution using Cholesky factorization of  S*K^T = HP  takes place here and produces column major K
-#                                         columns ,              rows
-K = Matrix([[symbols(f'K[{j*xdim + i}]') for j in range(sdim)] for i in range(xdim)])
-
-Xup = X + K*(Z - h)
-Pup = (eye(len(X)) - K*H)*P
-
-# assignments
-Xpred_assigments = [Assignment(symbols(f'X_new[{i}]'), Xpred[i]) for i in range(len(X))]
-Ppred_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Ppred[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
-
-S_assigments = [Assignment(symbols(f'S[{j*sdim+i}]'), S[i,j]) for i in range(len(Z)) for j in range(len(Z))] # both triangular, full matrix
-HP_assigments = [Assignment(symbols(f'HP[{j*sdim+i}]'), HP[i,j]) for j in range(xdim) for i in range(sdim)]
-
-Xup_assigments = [Assignment(symbols(f'X_new[{i}]'), Xup[i]) for i in range(len(X))]
-Pup_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Pup[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
-
-
-# PREDICTION STEP
-print('PREDICTION:')
-# code generation
-prediction_code = CodeBlock(*Xpred_assigments, *Ppred_assigments)
-# common subexpression elimination with tmp variables
-print('CSE')
-prediction_code = prediction_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
-# simplify
-print('SIMPLIFY')
-prediction_code = prediction_code.simplify()
-# count number of tmp variables
-prediction_code_N_tmps = len([s for s in prediction_code.left_hand_sides if s.name.startswith('tmp')])
-# generate C code
-print('CCODE')
-prediction_code = ccode(prediction_code)
-
-
-# Prepare numerical solution for K
-print('S and PHT MATRICES FOR SOLVING K:')
-# code generation
-s_code = CodeBlock(*S_assigments, *HP_assigments)
-# common subexpression elimination with tmp variables
-print('CSE')
-s_code = s_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
-# simplify
-print('SIMPLIFY')
-s_code = s_code.simplify()
-# count number of tmp variables
-s_code_N_tmps = len([s for s in s_code.left_hand_sides if s.name.startswith('tmp')])
-# generate C code
-print('CCODE')
-s_code = ccode(s_code)
-
-
-# UPDATE STEP
-print('UPDATE:')
-# code generation
-update_code = CodeBlock(*Xup_assigments, *Pup_assigments)
-# common subexpression elimination with tmp variables
-print('CSE')
-update_code = update_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
-# simplify
-print('SIMPLIFY')
-update_code = update_code.simplify()
-# count number of tmp variables
-update_code_N_tmps = len([s for s in update_code.left_hand_sides if s.name.startswith('tmp')])
-# generate C code
-print('CCODE')
-update_code = ccode(update_code)
-
-
-#%% post-proc code
-
-# replace sin, cos, tan, pow with sinf, cosf, tanf, powf
-prediction_code = prediction_code.replace('sin(', 'sinf(')
-prediction_code = prediction_code.replace('cos(', 'cosf(')
-prediction_code = prediction_code.replace('tan(', 'tanf(')
-prediction_code = prediction_code.replace('pow(', 'powf(')
-prediction_code = prediction_code.replace('\n', '\n\t')
-s_code = s_code.replace('sin(', 'sinf(')
-s_code = s_code.replace('cos(', 'cosf(')
-s_code = s_code.replace('tan(', 'tanf(')
-s_code = s_code.replace('pow(', 'powf(')
-s_code = s_code.replace('\n', '\n\t')
-update_code = update_code.replace('sin(', 'sinf(')
-update_code = update_code.replace('cos(', 'cosf(')
-update_code = update_code.replace('tan(', 'tanf(')
-update_code = update_code.replace('pow(', 'powf(')
-update_code = update_code.replace('\n', '\n\t')
-
-
-#%% emit code
-
-from os import path, makedirs
-from jinja2 import Environment, FileSystemLoader
-
-# set data used in templates
-data = {}
-data['lenX'] = len(X)
-data['lenQ'] = len(W)
-data['lenU'] = len(U)
-data['lenh'] = len(h)
-data['lenTmp'] = max(prediction_code_N_tmps, s_code_N_tmps, update_code_N_tmps)
-data['prediction_code'] = prediction_code
-data['prepare_gain_code'] = s_code
-data['update_code'] = update_code
-
-# make dirs 
-home_path = path.dirname(__file__)
-code_path = path.join(home_path, 'c_code')
-makedirs(code_path, exist_ok=True)
-
-# create files from templates
-files = [ "ekf_calc.h", "ekf_calc.c" ]
-
-env = Environment(loader = FileSystemLoader(home_path),
-                  trim_blocks=True, lstrip_blocks=True)
-
-for filename in files:
-    template = env.get_template(f'{filename}.j2')
-    with open(path.join(code_path, filename), 'w') as file:
-        file.write(template.render(data))
-

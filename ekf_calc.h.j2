@@ -8,13 +8,18 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+namespace orin_ekf {
+#endif
+
 #define N_STATES {{ lenX }}
 #define N_INPUTS {{ lenU }}
 #define N_PROC_NOISES {{ lenQ }}
 
 // getters
-float* ekf_get_X(void);     // get state vector
-float* ekf_get_P(void);     // get covariance matrix (lower diagonal)
+float* ekf_get_X(void);         // get state vector
+float* ekf_get_P(void);         // get covariance matrix (lower diagonal)
+float* ekf_get_P_diag(void);
 
 #define ekf_P_index(i,j) ((i>=j) ? ekf_get_P()[i*(i+1)/2+j] : ekf_get_P()[j*(j+1)/2+i])
 #define ekf_X_index(i) ekf_get_X()[i]
@@ -26,6 +31,8 @@ void ekf_set_P_diag(float P_diag[N_STATES]);          // set covariance matrix d
 
 // prediction function
 void ekf_predict(float U[N_INPUTS], float dt);
+// integrate
+void ekf_integrate(float X_[N_STATES], float U[N_INPUTS], float dt);
 
 // update functions (for different measurement models)
 {% for meas in measurements %}
@@ -35,6 +42,10 @@ void ekf_set_R_{{meas.name}}(float R_diag[N_MEASUREMENTS_{{meas.name|upper}}]); 
 void ekf_update_{{meas.name}}(float Z[N_MEASUREMENTS_{{meas.name|upper}}]{% if meas.num_params > 0 %}, float param[{{ meas.num_params }}]{% endif %});
 
 {% endfor %}
+
+#ifdef __cplusplus
+} // namespace orin_ekf
+#endif
 
 #endif // EKF_CALC_H
 

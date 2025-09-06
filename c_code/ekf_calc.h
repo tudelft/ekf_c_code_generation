@@ -8,15 +8,21 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+namespace orin_ekf {
+#endif
+
 #define N_STATES 22
 #define N_INPUTS 6
 #define N_PROC_NOISES 18
 
 // getters
-float* ekf_get_X(void);     // get state vector
-float* ekf_get_P(void);     // get covariance matrix (lower diagonal)
+float* ekf_get_X(void);         // get state vector
+float* ekf_get_P(void);         // get covariance matrix (lower diagonal)
+float* ekf_get_P_diag(void);
 
 #define ekf_P_index(i,j) ((i>=j) ? ekf_get_P()[i*(i+1)/2+j] : ekf_get_P()[j*(j+1)/2+i])
+#define ekf_increment_P_diag(i,v) { ekf_get_P()[i*(i+1)/2+i] += v; }
 #define ekf_X_index(i) ekf_get_X()[i]
 
 // setters
@@ -26,6 +32,8 @@ void ekf_set_P_diag(float P_diag[N_STATES]);          // set covariance matrix d
 
 // prediction function
 void ekf_predict(float U[N_INPUTS], float dt);
+// integrate
+void ekf_integrate(float X_[N_STATES], float U[N_INPUTS], float dt);
 
 // update functions (for different measurement models)
 // pos measurement model:
@@ -43,5 +51,9 @@ void ekf_update_pos_quat(float Z[N_MEASUREMENTS_POS_QUAT]);
 void ekf_set_R_points_1(float R_diag[N_MEASUREMENTS_POINTS_1]); // set measurement noise covariance matrix diagonal
 void ekf_update_points_1(float Z[N_MEASUREMENTS_POINTS_1], float param[7]);
 
+
+#ifdef __cplusplus
+} // namespace orin_ekf
+#endif
 
 #endif // EKF_CALC_H
