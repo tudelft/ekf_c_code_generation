@@ -18,6 +18,9 @@ namespace orin_ekf {
 float {{ var }} = {{ val }};
 {% endfor %}
 
+// tmp variables
+float tmp[{{num_tmps}}];
+
 float ekf_Q[N_PROC_NOISES];    // Kalman filter process noise covariance matrix (diagonal)
 
 // state
@@ -81,11 +84,8 @@ void ekf_set_P_diag(float P_diag[N_STATES]) {
 }
 
 void ekf_normalize(void) {
-    // temporary variables used in NORMALIZE
-    static float tmp[{{norm_num_tmps}}];
-
     // NORMALIZE X_new = ...
-    {{ norm_code }}
+{{ norm_code | indent(4, true) }}
 
     // swap X, X_new pointers
     swap_ptr = X;
@@ -94,11 +94,8 @@ void ekf_normalize(void) {
 }
 
 void ekf_predict(float U[N_INPUTS], float dt) {
-    // temporary variables used in prediction step
-    static float tmp[{{prediction_num_tmps}}];
-
     // PREDICTION STEP X_new, P_new = ...
-    {{ prediction_code }}
+{{ prediction_code | indent(4, true) }}
 
     // swap X, X_new and P, P_new pointers
     swap_ptr = X;
@@ -114,12 +111,9 @@ void ekf_predict(float U[N_INPUTS], float dt) {
 }
 
 void ekf_integrate(float X_[N_STATES], float U[N_INPUTS], float dt) {
-    // temporary variables used in integrate
-    static float tmp[{{integrate_num_tmps}}];
-
     // INTEGRATION STEP X_integrate = ...
     static float X_integrate[N_STATES];
-    {{ integrate_code}}
+{{ integrate_code | indent(4, true) }}
 
     // fill in X_
     for (int i=0; i<N_STATES; i++) {
@@ -138,14 +132,21 @@ void ekf_set_R_{{meas.name}}(float R_diag[N_MEASUREMENTS_{{meas.name|upper}}]) {
     }
 }
 
-void ekf_update_{{meas.name}}(float Z[N_MEASUREMENTS_{{meas.name|upper}}]{% if meas.num_params > 0 %}, float param[{{ meas.num_params }}]{% endif %}) {
+void ekf_h_{{meas.name}}(float h[N_MEASUREMENTS_{{meas.name|upper}}]{% if meas.num_params > 0 %}, const float param[{{ meas.num_params }}]{% endif %}) {
     // parameters
     {% for name in meas.param_names %}
     float {{name}} = param[{{loop.index0}}];
     {% endfor %}
 
-    // temporary variables used in update step
-    static float tmp[{{meas.num_tmps}}];
+    // h
+{{meas.h_code | indent(4, true) }}
+}
+
+void ekf_update_{{meas.name}}(const float Z[N_MEASUREMENTS_{{meas.name|upper}}]{% if meas.num_params > 0 %}, const float param[{{ meas.num_params }}]{% endif %}, int num_iter) {
+    // parameters
+    {% for name in meas.param_names %}
+    float {{name}} = param[{{loop.index0}}];
+    {% endfor %}
     
     // gain matrices
     static float ekf_S_full[N_MEASUREMENTS_{{meas.name|upper}}*N_MEASUREMENTS_{{meas.name|upper}}];
@@ -162,35 +163,42 @@ void ekf_update_{{meas.name}}(float Z[N_MEASUREMENTS_{{meas.name|upper}}]{% if m
     float *S_chol = ekf_S_chol;
     float *S_iDiag = ekf_S_iDiag;
 
-    // prepare gain calculation
-    {{ meas.prepare_gain_code }}
+    // iterated ekf
+    for (int iter = 0; iter < num_iter; iter++) {
+        // prepare gain calculation
+{{ meas.prepare_gain_code | indent(8, true) }}
 
-    // we have symmetric S and PHT in col major.
-    // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
-    // full state kalman update
-    chol(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS_{{meas.name|upper}});
-    for (int i = 0; i < N_STATES; i++) {
-        float k_row[N_MEASUREMENTS_{{meas.name|upper}}];
-        chol_solve(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS_{{meas.name|upper}}, (HP+(i*N_MEASUREMENTS_{{meas.name|upper}})), k_row);
-        for (int j = 0; j < N_MEASUREMENTS_{{meas.name|upper}}; j++) {
-            K[i + j*N_STATES] = k_row[j];
+        // we have symmetric S and PHT in col major.
+        // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
+        // full state kalman update
+        chol(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS_{{meas.name|upper}});
+        for (int i = 0; i < N_STATES; i++) {
+            float k_row[N_MEASUREMENTS_{{meas.name|upper}}];
+            chol_solve(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS_{{meas.name|upper}}, (HP+(i*N_MEASUREMENTS_{{meas.name|upper}})), k_row);
+            for (int j = 0; j < N_MEASUREMENTS_{{meas.name|upper}}; j++) {
+                K[i + j*N_STATES] = k_row[j];
+            }
         }
+
+        // UPDATE STEP X_new = ...
+{{ meas.update_X_code | indent(8, true) }}
+
+        // swap X, X_new
+        swap_ptr = X;
+        X = X_new;
+        X_new = swap_ptr;
+
+        // normalize state
+        ekf_normalize();    
     }
 
-    // UPDATE STEP X_new, P_new = ...
-    {{ meas.update_code }}
+    // UPDATE STEP P_new = ...
+{{ meas.update_P_code | indent(4, true) }}
 
-    // swap X, X_new and P, P_new pointers
-    swap_ptr = X;
-    X = X_new;
-    X_new = swap_ptr;
-
+    // swap P, P_new pointers
     swap_ptr = P;
     P = P_new;
     P_new = swap_ptr;
-
-    // normalize state
-    ekf_normalize();
 }
 {% endfor %}
 

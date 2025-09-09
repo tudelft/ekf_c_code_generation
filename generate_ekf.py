@@ -107,7 +107,7 @@ Rx = Matrix([[1, 0, 0], [0, cos(ephi), -sin(ephi)], [0, sin(ephi), cos(ephi)]])
 Ry = Matrix([[cos(etheta), 0, sin(etheta)],[0, 1, 0],[-sin(etheta), 0, cos(etheta)]])
 Rz = Matrix([[cos(epsi), -sin(epsi), 0],[sin(epsi), cos(epsi), 0], [0, 0, 1]])
 Re = Rz*Ry*Rx
-max_points = 16
+max_points = 4
 points_3d = [symbols(f'p3d{i}_x p3d{i}_y p3d{i}_z') for i in range(max_points)]
 points_2d = []
 for p3d in points_3d:
@@ -147,7 +147,7 @@ def renaming(code):
     code = code.replace('cos(', 'cosf(')
     code = code.replace('tan(', 'tanf(')
     code = code.replace('pow(', 'powf(')
-    code = code.replace('\n', '\n\t')
+    # code = code.replace('\n', '\n\t')
     return code
 
 symmetric_indexing = lambda i,j: int(j*(j+1)/2+i) if j>=i else int(i*(i+1)/2+j)
@@ -166,6 +166,9 @@ L = L.subs([(w,0) for w in W])
 Xpred = f
 Ppred = F*P*F.T + L*Q*L.T
 
+# tmp variables
+num_tmps = 0
+
 # assignments
 Xpred_assigments = [Assignment(symbols(f'X_new[{i}]'), Xpred[i]) for i in range(len(X))]
 Ppred_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Ppred[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
@@ -175,6 +178,7 @@ prediction_code = CodeBlock(*Xpred_assigments, *Ppred_assigments)
 prediction_code = prediction_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
 prediction_code = prediction_code.simplify()
 prediction_code_N_tmps = len([s for s in prediction_code.left_hand_sides if s.name.startswith('tmp')])
+num_tmps = max(num_tmps, prediction_code_N_tmps)
 prediction_code = ccode(prediction_code)
 prediction_code = renaming(prediction_code)
 
@@ -184,6 +188,7 @@ integrate_code = CodeBlock(*Xint_assignments)
 integrate_code = integrate_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
 integrate_code = integrate_code.simplify()
 integrate_code_N_tmps = len([s for s in integrate_code.left_hand_sides if s.name.startswith('tmp')])
+num_tmps = max(num_tmps, integrate_code_N_tmps)
 integrate_code = ccode(integrate_code)
 integrate_code = renaming(integrate_code)
 
@@ -193,6 +198,7 @@ norm_code = CodeBlock(*Xnorm_assigments)
 norm_code = norm_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
 norm_code = norm_code.simplify()
 norm_code_N_tmps = len([s for s in norm_code.left_hand_sides if s.name.startswith('tmp')])
+num_tmps = max(num_tmps, norm_code_N_tmps)
 norm_code = ccode(norm_code)
 norm_code = renaming(norm_code)
 
@@ -234,25 +240,45 @@ for name, val in measurement_models.items():
     s_code = s_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
     s_code = s_code.simplify()
     s_code_N_tmps = len([s for s in s_code.left_hand_sides if s.name.startswith('tmp')])
+    num_tmps = max(num_tmps, s_code_N_tmps)
     s_code = ccode(s_code)
     s_code = renaming(s_code)
     
-    update_code = CodeBlock(*Xup_assigments, *Pup_assigments)
-    update_code = update_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
-    update_code = update_code.simplify()
-    update_code_N_tmps = len([s for s in update_code.left_hand_sides if s.name.startswith('tmp')])
-    update_code = ccode(update_code)
-    update_code = renaming(update_code)
+    update_X_code = CodeBlock(*Xup_assigments)
+    update_X_code = update_X_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+    update_X_code = update_X_code.simplify()
+    update_X_code_N_tmps = len([s for s in update_X_code.left_hand_sides if s.name.startswith('tmp')])
+    num_tmps = max(num_tmps, update_X_code_N_tmps)
+    update_X_code = ccode(update_X_code)
+    update_X_code = renaming(update_X_code)
+    
+    update_P_code = CodeBlock(*Pup_assigments)
+    update_P_code = update_P_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+    update_P_code = update_P_code.simplify()
+    update_P_code_N_tmps = len([s for s in update_P_code.left_hand_sides if s.name.startswith('tmp')])
+    num_tmps = max(num_tmps, update_P_code_N_tmps)
+    update_P_code = ccode(update_P_code)
+    update_P_code = renaming(update_P_code)
+    
+    h_assignments = [Assignment(symbols(f'h[{i}]'), h[i]) for i in range(len(h))]
+    h_code = CodeBlock(*h_assignments)
+    h_code = h_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+    h_code = h_code.simplify()
+    h_code_N_tmps = len([s for s in h_code.left_hand_sides if s.name.startswith('tmp')])
+    num_tmps = max(num_tmps, h_code_N_tmps)
+    h_code = ccode(h_code)
+    h_code = renaming(h_code)    
     
     # update_code[name] = (s_code, u_code, max(s_code_N_tmps, u_code_N_tmps))
     measurements.append({
         'name': name,
         'num_measurements': num_measurements,
         'prepare_gain_code': s_code,
-        'update_code': update_code,
-        'num_tmps': max(s_code_N_tmps, update_code_N_tmps),
+        'update_X_code': update_X_code,
+        'update_P_code': update_P_code,
         'num_params': len(params),
-        'param_names': [p.name for p in params]
+        'param_names': [p.name for p in params],
+        'h_code': h_code
     })
     
 # fill in the jinja template    
@@ -265,13 +291,11 @@ data['lenX'] = len(X)
 data['lenQ'] = len(W)
 data['lenU'] = len(U)
 data['prediction_code'] = prediction_code
-data['prediction_num_tmps'] = prediction_code_N_tmps
 data['integrate_code'] = integrate_code
-data['integrate_num_tmps'] = integrate_code_N_tmps
 data['norm_code'] = norm_code
-data['norm_num_tmps'] = norm_code_N_tmps
 data['global_vars'] = global_vars
 data['measurements'] = measurements
+data['num_tmps'] = num_tmps
 
 # make dirs 
 home_path = path.dirname(__file__)

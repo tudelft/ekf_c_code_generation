@@ -22,6 +22,7 @@ float* ekf_get_P(void);         // get covariance matrix (lower diagonal)
 float* ekf_get_P_diag(void);
 
 #define ekf_P_index(i,j) ((i>=j) ? ekf_get_P()[i*(i+1)/2+j] : ekf_get_P()[j*(j+1)/2+i])
+#define ekf_increment_P_diag(i,v) { ekf_get_P()[i*(i+1)/2+i] += v; }
 #define ekf_X_index(i) ekf_get_X()[i]
 
 // setters
@@ -38,92 +39,38 @@ void ekf_integrate(float X_[N_STATES], float U[N_INPUTS], float dt);
 // pos measurement model:
 #define N_MEASUREMENTS_POS 3
 void ekf_set_R_pos(float R_diag[N_MEASUREMENTS_POS]); // set measurement noise covariance matrix diagonal
-void ekf_update_pos(float Z[N_MEASUREMENTS_POS]);
+void ekf_h_pos(float h[N_MEASUREMENTS_POS]);
+void ekf_update_pos(const float Z[N_MEASUREMENTS_POS], int num_iter);
 
 // pos_quat measurement model:
 #define N_MEASUREMENTS_POS_QUAT 7
 void ekf_set_R_pos_quat(float R_diag[N_MEASUREMENTS_POS_QUAT]); // set measurement noise covariance matrix diagonal
-void ekf_update_pos_quat(float Z[N_MEASUREMENTS_POS_QUAT]);
+void ekf_h_pos_quat(float h[N_MEASUREMENTS_POS_QUAT]);
+void ekf_update_pos_quat(const float Z[N_MEASUREMENTS_POS_QUAT], int num_iter);
 
 // points_1 measurement model:
 #define N_MEASUREMENTS_POINTS_1 2
 void ekf_set_R_points_1(float R_diag[N_MEASUREMENTS_POINTS_1]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_1(float Z[N_MEASUREMENTS_POINTS_1], float param[7]);
+void ekf_h_points_1(float h[N_MEASUREMENTS_POINTS_1], const float param[7]);
+void ekf_update_points_1(const float Z[N_MEASUREMENTS_POINTS_1], const float param[7], int num_iter);
 
 // points_2 measurement model:
 #define N_MEASUREMENTS_POINTS_2 4
 void ekf_set_R_points_2(float R_diag[N_MEASUREMENTS_POINTS_2]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_2(float Z[N_MEASUREMENTS_POINTS_2], float param[10]);
+void ekf_h_points_2(float h[N_MEASUREMENTS_POINTS_2], const float param[10]);
+void ekf_update_points_2(const float Z[N_MEASUREMENTS_POINTS_2], const float param[10], int num_iter);
 
 // points_3 measurement model:
 #define N_MEASUREMENTS_POINTS_3 6
 void ekf_set_R_points_3(float R_diag[N_MEASUREMENTS_POINTS_3]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_3(float Z[N_MEASUREMENTS_POINTS_3], float param[13]);
+void ekf_h_points_3(float h[N_MEASUREMENTS_POINTS_3], const float param[13]);
+void ekf_update_points_3(const float Z[N_MEASUREMENTS_POINTS_3], const float param[13], int num_iter);
 
 // points_4 measurement model:
 #define N_MEASUREMENTS_POINTS_4 8
 void ekf_set_R_points_4(float R_diag[N_MEASUREMENTS_POINTS_4]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_4(float Z[N_MEASUREMENTS_POINTS_4], float param[16]);
-
-// points_5 measurement model:
-#define N_MEASUREMENTS_POINTS_5 10
-void ekf_set_R_points_5(float R_diag[N_MEASUREMENTS_POINTS_5]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_5(float Z[N_MEASUREMENTS_POINTS_5], float param[19]);
-
-// points_6 measurement model:
-#define N_MEASUREMENTS_POINTS_6 12
-void ekf_set_R_points_6(float R_diag[N_MEASUREMENTS_POINTS_6]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_6(float Z[N_MEASUREMENTS_POINTS_6], float param[22]);
-
-// points_7 measurement model:
-#define N_MEASUREMENTS_POINTS_7 14
-void ekf_set_R_points_7(float R_diag[N_MEASUREMENTS_POINTS_7]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_7(float Z[N_MEASUREMENTS_POINTS_7], float param[25]);
-
-// points_8 measurement model:
-#define N_MEASUREMENTS_POINTS_8 16
-void ekf_set_R_points_8(float R_diag[N_MEASUREMENTS_POINTS_8]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_8(float Z[N_MEASUREMENTS_POINTS_8], float param[28]);
-
-// points_9 measurement model:
-#define N_MEASUREMENTS_POINTS_9 18
-void ekf_set_R_points_9(float R_diag[N_MEASUREMENTS_POINTS_9]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_9(float Z[N_MEASUREMENTS_POINTS_9], float param[31]);
-
-// points_10 measurement model:
-#define N_MEASUREMENTS_POINTS_10 20
-void ekf_set_R_points_10(float R_diag[N_MEASUREMENTS_POINTS_10]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_10(float Z[N_MEASUREMENTS_POINTS_10], float param[34]);
-
-// points_11 measurement model:
-#define N_MEASUREMENTS_POINTS_11 22
-void ekf_set_R_points_11(float R_diag[N_MEASUREMENTS_POINTS_11]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_11(float Z[N_MEASUREMENTS_POINTS_11], float param[37]);
-
-// points_12 measurement model:
-#define N_MEASUREMENTS_POINTS_12 24
-void ekf_set_R_points_12(float R_diag[N_MEASUREMENTS_POINTS_12]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_12(float Z[N_MEASUREMENTS_POINTS_12], float param[40]);
-
-// points_13 measurement model:
-#define N_MEASUREMENTS_POINTS_13 26
-void ekf_set_R_points_13(float R_diag[N_MEASUREMENTS_POINTS_13]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_13(float Z[N_MEASUREMENTS_POINTS_13], float param[43]);
-
-// points_14 measurement model:
-#define N_MEASUREMENTS_POINTS_14 28
-void ekf_set_R_points_14(float R_diag[N_MEASUREMENTS_POINTS_14]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_14(float Z[N_MEASUREMENTS_POINTS_14], float param[46]);
-
-// points_15 measurement model:
-#define N_MEASUREMENTS_POINTS_15 30
-void ekf_set_R_points_15(float R_diag[N_MEASUREMENTS_POINTS_15]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_15(float Z[N_MEASUREMENTS_POINTS_15], float param[49]);
-
-// points_16 measurement model:
-#define N_MEASUREMENTS_POINTS_16 32
-void ekf_set_R_points_16(float R_diag[N_MEASUREMENTS_POINTS_16]); // set measurement noise covariance matrix diagonal
-void ekf_update_points_16(float Z[N_MEASUREMENTS_POINTS_16], float param[52]);
+void ekf_h_points_4(float h[N_MEASUREMENTS_POINTS_4], const float param[16]);
+void ekf_update_points_4(const float Z[N_MEASUREMENTS_POINTS_4], const float param[16], int num_iter);
 
 
 #ifdef __cplusplus
