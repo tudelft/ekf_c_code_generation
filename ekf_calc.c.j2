@@ -189,7 +189,7 @@ void ekf_update_{{meas.name}}(const float Z[N_MEASUREMENTS_{{meas.name|upper}}]{
         X_new = swap_ptr;
 
         // normalize state
-        ekf_normalize();    
+        ekf_normalize();
     }
 
     // UPDATE STEP P_new = ...

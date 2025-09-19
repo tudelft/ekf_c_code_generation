@@ -72,6 +72,78 @@ void ekf_set_R_points_4(float R_diag[N_MEASUREMENTS_POINTS_4]); // set measureme
 void ekf_h_points_4(float h[N_MEASUREMENTS_POINTS_4], const float param[16]);
 void ekf_update_points_4(const float Z[N_MEASUREMENTS_POINTS_4], const float param[16], int num_iter);
 
+// points_5 measurement model:
+#define N_MEASUREMENTS_POINTS_5 10
+void ekf_set_R_points_5(float R_diag[N_MEASUREMENTS_POINTS_5]); // set measurement noise covariance matrix diagonal
+void ekf_h_points_5(float h[N_MEASUREMENTS_POINTS_5], const float param[19]);
+void ekf_update_points_5(const float Z[N_MEASUREMENTS_POINTS_5], const float param[19], int num_iter);
+
+// points_6 measurement model:
+#define N_MEASUREMENTS_POINTS_6 12
+void ekf_set_R_points_6(float R_diag[N_MEASUREMENTS_POINTS_6]); // set measurement noise covariance matrix diagonal
+void ekf_h_points_6(float h[N_MEASUREMENTS_POINTS_6], const float param[22]);
+void ekf_update_points_6(const float Z[N_MEASUREMENTS_POINTS_6], const float param[22], int num_iter);
+
+// points_7 measurement model:
+#define N_MEASUREMENTS_POINTS_7 14
+void ekf_set_R_points_7(float R_diag[N_MEASUREMENTS_POINTS_7]); // set measurement noise covariance matrix diagonal
+void ekf_h_points_7(float h[N_MEASUREMENTS_POINTS_7], const float param[25]);
+void ekf_update_points_7(const float Z[N_MEASUREMENTS_POINTS_7], const float param[25], int num_iter);
+
+// points_8 measurement model:
+#define N_MEASUREMENTS_POINTS_8 16
+void ekf_set_R_points_8(float R_diag[N_MEASUREMENTS_POINTS_8]); // set measurement noise covariance matrix diagonal
+void ekf_h_points_8(float h[N_MEASUREMENTS_POINTS_8], const float param[28]);
+void ekf_update_points_8(const float Z[N_MEASUREMENTS_POINTS_8], const float param[28], int num_iter);
+
+// points_9 measurement model:
+#define N_MEASUREMENTS_POINTS_9 18
+void ekf_set_R_points_9(float R_diag[N_MEASUREMENTS_POINTS_9]); // set measurement noise covariance matrix diagonal
+void ekf_h_points_9(float h[N_MEASUREMENTS_POINTS_9], const float param[31]);
+void ekf_update_points_9(const float Z[N_MEASUREMENTS_POINTS_9], const float param[31], int num_iter);
+
+// points_10 measurement model:
+#define N_MEASUREMENTS_POINTS_10 20
+void ekf_set_R_points_10(float R_diag[N_MEASUREMENTS_POINTS_10]); // set measurement noise covariance matrix diagonal
+void ekf_h_points_10(float h[N_MEASUREMENTS_POINTS_10], const float param[34]);
+void ekf_update_points_10(const float Z[N_MEASUREMENTS_POINTS_10], const float param[34], int num_iter);
+
+// points_11 measurement model:
+#define N_MEASUREMENTS_POINTS_11 22
+void ekf_set_R_points_11(float R_diag[N_MEASUREMENTS_POINTS_11]); // set measurement noise covariance matrix diagonal
+void ekf_h_points_11(float h[N_MEASUREMENTS_POINTS_11], const float param[37]);
+void ekf_update_points_11(const float Z[N_MEASUREMENTS_POINTS_11], const float param[37], int num_iter);
+
+// points_12 measurement model:
+#define N_MEASUREMENTS_POINTS_12 24
+void ekf_set_R_points_12(float R_diag[N_MEASUREMENTS_POINTS_12]); // set measurement noise covariance matrix diagonal
+void ekf_h_points_12(float h[N_MEASUREMENTS_POINTS_12], const float param[40]);
+void ekf_update_points_12(const float Z[N_MEASUREMENTS_POINTS_12], const float param[40], int num_iter);
+
+// points_13 measurement model:
+#define N_MEASUREMENTS_POINTS_13 26
+void ekf_set_R_points_13(float R_diag[N_MEASUREMENTS_POINTS_13]); // set measurement noise covariance matrix diagonal
+void ekf_h_points_13(float h[N_MEASUREMENTS_POINTS_13], const float param[43]);
+void ekf_update_points_13(const float Z[N_MEASUREMENTS_POINTS_13], const float param[43], int num_iter);
+
+// points_14 measurement model:
+#define N_MEASUREMENTS_POINTS_14 28
+void ekf_set_R_points_14(float R_diag[N_MEASUREMENTS_POINTS_14]); // set measurement noise covariance matrix diagonal
+void ekf_h_points_14(float h[N_MEASUREMENTS_POINTS_14], const float param[46]);
+void ekf_update_points_14(const float Z[N_MEASUREMENTS_POINTS_14], const float param[46], int num_iter);
+
+// points_15 measurement model:
+#define N_MEASUREMENTS_POINTS_15 30
+void ekf_set_R_points_15(float R_diag[N_MEASUREMENTS_POINTS_15]); // set measurement noise covariance matrix diagonal
+void ekf_h_points_15(float h[N_MEASUREMENTS_POINTS_15], const float param[49]);
+void ekf_update_points_15(const float Z[N_MEASUREMENTS_POINTS_15], const float param[49], int num_iter);
+
+// points_16 measurement model:
+#define N_MEASUREMENTS_POINTS_16 32
+void ekf_set_R_points_16(float R_diag[N_MEASUREMENTS_POINTS_16]); // set measurement noise covariance matrix diagonal
+void ekf_h_points_16(float h[N_MEASUREMENTS_POINTS_16], const float param[52]);
+void ekf_update_points_16(const float Z[N_MEASUREMENTS_POINTS_16], const float param[52], int num_iter);
+
 
 #ifdef __cplusplus
 } // namespace orin_ekf
