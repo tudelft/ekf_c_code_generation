@@ -117,8 +117,8 @@ for p3d in points_3d:
     p_body = Quaternion.rotate_point([px-x, py-y, pz-z], quat_inv)
     px, py, pz = p_body
     # from body to camera coordinates
-    # p_cam = Quaternion.rotate_point([px-ex, py-ey, pz-z], Quaternion(eqw, -eqx, -eqy, -eqz))
-    p_cam = Re.T * Matrix([px-ex, py-ey, pz-z])
+    # p_cam = Quaternion.rotate_point([px-ex, py-ey, pz-ez], Quaternion(eqw, -eqx, -eqy, -eqz))
+    p_cam = Re.T * Matrix([px-ex, py-ey, pz-ez])
     px, py, pz = p_cam
     # camera coordinates to opencv convention
     px, py, pz = py, pz, px
