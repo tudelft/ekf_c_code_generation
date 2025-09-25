@@ -221,44 +221,46 @@ for name, val in measurement_models.items():
     R = Matrix([[symbols(f'R[{i}]') if i==j else '0' for j in range(num_measurements)] for i in range(num_measurements)])
     K = Matrix([[symbols(f'K[{j*num_states + i}]') for j in range(num_measurements)] for i in range(num_states)])
     
-    S = H*P*H.T + R
-    HP = H*P
-    sdim = S.shape[0]
-    xdim = len(X)
+    # S = H*P*H.T + R
+    # HP = H*P
+    # sdim = S.shape[0]
+    # xdim = len(X)
     
-    Xup = X + K*(Z - h)
-    Pup = (eye(len(X)) - K*H)*P
+    # Xup = X + K*(Z - h)
+    # Pup = (eye(len(X)) - K*H)*P
+    # joseph form to ensure positive semi-definiteness
+    # Pup = (eye(len(X)) - K*H)*P*(eye(len(X)) - K*H).T + K*R*K.T
     
-    S_assigments = [Assignment(symbols(f'S[{j*sdim+i}]'), S[i,j]) for i in range(len(Z)) for j in range(len(Z))] # both triangular, full matrix
-    HP_assigments = [Assignment(symbols(f'HP[{j*sdim+i}]'), HP[i,j]) for j in range(xdim) for i in range(sdim)]
+    # S_assigments = [Assignment(symbols(f'S[{j*sdim+i}]'), S[i,j]) for i in range(len(Z)) for j in range(len(Z))] # both triangular, full matrix
+    # HP_assigments = [Assignment(symbols(f'HP[{j*sdim+i}]'), HP[i,j]) for j in range(xdim) for i in range(sdim)]
 
-    Xup_assigments = [Assignment(symbols(f'X_new[{i}]'), Xup[i]) for i in range(len(X))]
-    Pup_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Pup[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
+    # Xup_assigments = [Assignment(symbols(f'X_new[{i}]'), Xup[i]) for i in range(len(X))]
+    # Pup_assigments = [Assignment(symbols(f'P_new[{symmetric_indexing(i,j)}]'), Pup[i,j]) for i in range(len(X)) for j in range(len(X)) if j >= i] # only the lower diagonal will be calculated
 
     # code generation
-    s_code = CodeBlock(*S_assigments, *HP_assigments)
-    s_code = s_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
-    s_code = s_code.simplify()
-    s_code_N_tmps = len([s for s in s_code.left_hand_sides if s.name.startswith('tmp')])
-    num_tmps = max(num_tmps, s_code_N_tmps)
-    s_code = ccode(s_code)
-    s_code = renaming(s_code)
+    # s_code = CodeBlock(*S_assigments, *HP_assigments)
+    # s_code = s_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+    # s_code = s_code.simplify()
+    # s_code_N_tmps = len([s for s in s_code.left_hand_sides if s.name.startswith('tmp')])
+    # num_tmps = max(num_tmps, s_code_N_tmps)
+    # s_code = ccode(s_code)
+    # s_code = renaming(s_code)
     
-    update_X_code = CodeBlock(*Xup_assigments)
-    update_X_code = update_X_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
-    update_X_code = update_X_code.simplify()
-    update_X_code_N_tmps = len([s for s in update_X_code.left_hand_sides if s.name.startswith('tmp')])
-    num_tmps = max(num_tmps, update_X_code_N_tmps)
-    update_X_code = ccode(update_X_code)
-    update_X_code = renaming(update_X_code)
+    # update_X_code = CodeBlock(*Xup_assigments)
+    # update_X_code = update_X_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+    # update_X_code = update_X_code.simplify()
+    # update_X_code_N_tmps = len([s for s in update_X_code.left_hand_sides if s.name.startswith('tmp')])
+    # num_tmps = max(num_tmps, update_X_code_N_tmps)
+    # update_X_code = ccode(update_X_code)
+    # update_X_code = renaming(update_X_code)
     
-    update_P_code = CodeBlock(*Pup_assigments)
-    update_P_code = update_P_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
-    update_P_code = update_P_code.simplify()
-    update_P_code_N_tmps = len([s for s in update_P_code.left_hand_sides if s.name.startswith('tmp')])
-    num_tmps = max(num_tmps, update_P_code_N_tmps)
-    update_P_code = ccode(update_P_code)
-    update_P_code = renaming(update_P_code)
+    # update_P_code = CodeBlock(*Pup_assigments)
+    # update_P_code = update_P_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+    # update_P_code = update_P_code.simplify()
+    # update_P_code_N_tmps = len([s for s in update_P_code.left_hand_sides if s.name.startswith('tmp')])
+    # num_tmps = max(num_tmps, update_P_code_N_tmps)
+    # update_P_code = ccode(update_P_code)
+    # update_P_code = renaming(update_P_code)
     
     h_assignments = [Assignment(symbols(f'h[{i}]'), h[i]) for i in range(len(h))]
     h_code = CodeBlock(*h_assignments)
@@ -267,18 +269,25 @@ for name, val in measurement_models.items():
     h_code_N_tmps = len([s for s in h_code.left_hand_sides if s.name.startswith('tmp')])
     num_tmps = max(num_tmps, h_code_N_tmps)
     h_code = ccode(h_code)
-    h_code = renaming(h_code)    
+    h_code = renaming(h_code)
+    
+    H_assignments = [Assignment(symbols(f'H[{i + j*len(h)}]'), H[i,j]) for i in range(len(h)) for j in range(len(X))]
+    H_code = CodeBlock(*H_assignments)
+    H_code = H_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
+    H_code = H_code.simplify()
+    H_code_N_tmps = len([s for s in H_code.left_hand_sides if s.name.startswith('tmp')])
+    num_tmps = max(num_tmps, H_code_N_tmps)
+    H_code = ccode(H_code)
+    H_code = renaming(H_code)
     
     # update_code[name] = (s_code, u_code, max(s_code_N_tmps, u_code_N_tmps))
     measurements.append({
         'name': name,
         'num_measurements': num_measurements,
-        'prepare_gain_code': s_code,
-        'update_X_code': update_X_code,
-        'update_P_code': update_P_code,
         'num_params': len(params),
         'param_names': [p.name for p in params],
-        'h_code': h_code
+        'h_code': h_code,
+        'H_code': H_code
     })
     
 # fill in the jinja template    

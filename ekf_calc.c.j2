@@ -142,46 +142,83 @@ void ekf_h_{{meas.name}}(float h[N_MEASUREMENTS_{{meas.name|upper}}]{% if meas.n
 {{meas.h_code | indent(4, true) }}
 }
 
+void ekf_H_{{meas.name}}(float H[N_MEASUREMENTS_{{meas.name|upper}}*N_STATES]{% if meas.num_params > 0 %}, const float param[{{ meas.num_params }}]{% endif %}) {
+    // parameters
+    {% for name in meas.param_names %}
+    float {{name}} = param[{{loop.index0}}];
+    {% endfor %}
+
+    // H
+{{meas.H_code | indent(4, true) }}
+}
+
 void ekf_update_{{meas.name}}(const float Z[N_MEASUREMENTS_{{meas.name|upper}}]{% if meas.num_params > 0 %}, const float param[{{ meas.num_params }}]{% endif %}, int num_iter) {
     // parameters
     {% for name in meas.param_names %}
     float {{name}} = param[{{loop.index0}}];
     {% endfor %}
     
-    // gain matrices
-    static float ekf_S_full[N_MEASUREMENTS_{{meas.name|upper}}*N_MEASUREMENTS_{{meas.name|upper}}];
-    static float ekf_S_chol[N_MEASUREMENTS_{{meas.name|upper}}*N_MEASUREMENTS_{{meas.name|upper}}];
-    static float ekf_S_iDiag[N_MEASUREMENTS_{{meas.name|upper}}];
-    static float ekf_HP[N_STATES*N_MEASUREMENTS_{{meas.name|upper}}];
-    static float ekf_K[N_STATES*N_MEASUREMENTS_{{meas.name|upper}}];
+    // gain matrices all matrices col major
+    static float h[N_MEASUREMENTS_{{meas.name|upper}}];
+    static float H[N_MEASUREMENTS_{{meas.name|upper}}*N_STATES];
+    static float HP[N_MEASUREMENTS_{{meas.name|upper}}*N_STATES];
+    static float S[N_MEASUREMENTS_{{meas.name|upper}}*N_MEASUREMENTS_{{meas.name|upper}}];
+    static float S_chol[N_MEASUREMENTS_{{meas.name|upper}}*N_MEASUREMENTS_{{meas.name|upper}}];
+    static float S_iDiag[N_MEASUREMENTS_{{meas.name|upper}}];
+    static float K[N_STATES*N_MEASUREMENTS_{{meas.name|upper}}];
 
     // renaming
-    float *S = ekf_S_full;
-    float *HP = ekf_HP;
-    float *K = ekf_K;
     float *R = ekf_R_{{meas.name}};
-    float *S_chol = ekf_S_chol;
-    float *S_iDiag = ekf_S_iDiag;
 
     // iterated ekf
     for (int iter = 0; iter < num_iter; iter++) {
         // prepare gain calculation
-{{ meas.prepare_gain_code | indent(8, true) }}
+        // compute H
+        ekf_H_{{meas.name}}(H{% if meas.num_params > 0 %}, param{% endif %});
+
+        // compute h
+        ekf_h_{{meas.name}}(h{% if meas.num_params > 0 %}, param{% endif %});
+
+        // compute HP
+        for (int i = 0; i < N_MEASUREMENTS_{{meas.name|upper}}; i++) {
+            for (int j = 0; j < N_STATES; j++) {
+                HP[i+j*N_MEASUREMENTS_{{meas.name|upper}}] = 0.;
+                for (int k = 0; k < N_STATES; k++) {
+                    HP[i+j*N_MEASUREMENTS_{{meas.name|upper}}] += H[i+k*N_MEASUREMENTS_{{meas.name|upper}}] * ekf_P_index(k,j);
+                }
+            }
+        }
+
+        // compute S = H*P*H' + R
+        for (int i = 0; i < N_MEASUREMENTS_{{meas.name|upper}}; i++) {
+            for (int j = 0; j < N_MEASUREMENTS_{{meas.name|upper}}; j++) {
+                S[i+j*N_MEASUREMENTS_{{meas.name|upper}}] = 0.;
+                for (int k = 0; k < N_STATES; k++) {
+                    S[i+j*N_MEASUREMENTS_{{meas.name|upper}}] += H[i+k*N_MEASUREMENTS_{{meas.name|upper}}] * HP[j+k*N_MEASUREMENTS_{{meas.name|upper}}];
+                }
+            }
+            S[i+i*N_MEASUREMENTS_{{meas.name|upper}}] += R[i];
+        }
 
         // we have symmetric S and PHT in col major.
         // Solve K as K^T = invS * H*P, as we have columns of HP. We solve columns of K^T, which are actually rows of K
         // full state kalman update
-        chol(ekf_S_chol, S, ekf_S_iDiag, N_MEASUREMENTS_{{meas.name|upper}});
+        chol(S_chol, S, S_iDiag, N_MEASUREMENTS_{{meas.name|upper}});
         for (int i = 0; i < N_STATES; i++) {
             float k_row[N_MEASUREMENTS_{{meas.name|upper}}];
-            chol_solve(ekf_S_chol, ekf_S_iDiag, N_MEASUREMENTS_{{meas.name|upper}}, (HP+(i*N_MEASUREMENTS_{{meas.name|upper}})), k_row);
+            chol_solve(S_chol, S_iDiag, N_MEASUREMENTS_{{meas.name|upper}}, (HP+(i*N_MEASUREMENTS_{{meas.name|upper}})), k_row);
             for (int j = 0; j < N_MEASUREMENTS_{{meas.name|upper}}; j++) {
                 K[i + j*N_STATES] = k_row[j];
             }
         }
 
         // UPDATE STEP X_new = ...
-{{ meas.update_X_code | indent(8, true) }}
+        for (int i = 0; i < N_STATES; i++) {
+            X_new[i] = X[i];
+            for (int j = 0; j < N_MEASUREMENTS_{{meas.name|upper}}; j++) {
+                X_new[i] += K[i + j*N_STATES] * (Z[j] - h[j]);
+            }
+        }   
 
         // swap X, X_new
         swap_ptr = X;
@@ -192,8 +229,15 @@ void ekf_update_{{meas.name}}(const float Z[N_MEASUREMENTS_{{meas.name|upper}}]{
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = ...
-{{ meas.update_P_code | indent(4, true) }}
+    // UPDATE STEP P_new = (I - K*H)*P
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) { // only lower diagonal
+            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+            for (int k = 0; k < N_MEASUREMENTS_{{meas.name|upper}}; k++) {
+                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_{{meas.name|upper}}];
+            }
+        }
+    }
 
     // swap P, P_new pointers
     swap_ptr = P;
