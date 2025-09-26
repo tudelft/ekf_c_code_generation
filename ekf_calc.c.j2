@@ -229,12 +229,36 @@ void ekf_update_{{meas.name}}(const float Z[N_MEASUREMENTS_{{meas.name|upper}}]{
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_{{meas.name|upper}}; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_{{meas.name|upper}}];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_{{meas.name|upper}}];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_{{meas.name|upper}}; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_{{meas.name|upper}}; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }

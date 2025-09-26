@@ -1034,12 +1034,36 @@ void ekf_update_pos(const float Z[N_MEASUREMENTS_POS], int num_iter) {
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POS; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POS];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POS];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POS; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POS; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -1305,12 +1329,36 @@ void ekf_update_pos_quat(const float Z[N_MEASUREMENTS_POS_QUAT], int num_iter) {
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POS_QUAT; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POS_QUAT];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POS_QUAT];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POS_QUAT; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POS_QUAT; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -1748,12 +1796,36 @@ void ekf_update_points_1(const float Z[N_MEASUREMENTS_POINTS_1], const float par
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_1; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_1];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_1];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_1; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_1; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -2436,12 +2508,36 @@ void ekf_update_points_2(const float Z[N_MEASUREMENTS_POINTS_2], const float par
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_2; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_2];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_2];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_2; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_2; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -3341,12 +3437,36 @@ void ekf_update_points_3(const float Z[N_MEASUREMENTS_POINTS_3], const float par
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_3; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_3];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_3];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_3; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_3; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -4463,12 +4583,36 @@ void ekf_update_points_4(const float Z[N_MEASUREMENTS_POINTS_4], const float par
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_4; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_4];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_4];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_4; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_4; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -5802,12 +5946,36 @@ void ekf_update_points_5(const float Z[N_MEASUREMENTS_POINTS_5], const float par
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_5; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_5];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_5];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_5; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_5; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -7358,12 +7526,36 @@ void ekf_update_points_6(const float Z[N_MEASUREMENTS_POINTS_6], const float par
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_6; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_6];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_6];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_6; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_6; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -9131,12 +9323,36 @@ void ekf_update_points_7(const float Z[N_MEASUREMENTS_POINTS_7], const float par
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_7; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_7];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_7];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_7; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_7; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -11121,12 +11337,36 @@ void ekf_update_points_8(const float Z[N_MEASUREMENTS_POINTS_8], const float par
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_8; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_8];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_8];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_8; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_8; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -13328,12 +13568,36 @@ void ekf_update_points_9(const float Z[N_MEASUREMENTS_POINTS_9], const float par
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_9; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_9];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_9];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_9; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_9; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -15752,12 +16016,36 @@ void ekf_update_points_10(const float Z[N_MEASUREMENTS_POINTS_10], const float p
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_10; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_10];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_10];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_10; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_10; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -18393,12 +18681,36 @@ void ekf_update_points_11(const float Z[N_MEASUREMENTS_POINTS_11], const float p
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_11; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_11];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_11];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_11; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_11; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -21251,12 +21563,36 @@ void ekf_update_points_12(const float Z[N_MEASUREMENTS_POINTS_12], const float p
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_12; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_12];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_12];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_12; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_12; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -24326,12 +24662,36 @@ void ekf_update_points_13(const float Z[N_MEASUREMENTS_POINTS_13], const float p
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_13; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_13];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_13];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_13; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_13; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -27618,12 +27978,36 @@ void ekf_update_points_14(const float Z[N_MEASUREMENTS_POINTS_14], const float p
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_14; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_14];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_14];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_14; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_14; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -31127,12 +31511,36 @@ void ekf_update_points_15(const float Z[N_MEASUREMENTS_POINTS_15], const float p
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_15; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_15];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_15];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_15; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_15; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
@@ -34853,12 +35261,36 @@ void ekf_update_points_16(const float Z[N_MEASUREMENTS_POINTS_16], const float p
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
+    // UPDATE STEP JOSEPH FORMULA P_new = (I-KH)P(I-KH)' + KRK'
+    // first compute (I-KH)
+    static float I_KH[N_STATES*N_STATES];
     for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
+        for (int j = 0; j < N_STATES; j++) {
+            I_KH[i+j*N_STATES] = (i == j) ? 1.0 : 0.0;
             for (int k = 0; k < N_MEASUREMENTS_POINTS_16; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_POINTS_16];
+                I_KH[i+j*N_STATES] -= K[i + k*N_STATES] * H[k + j*N_MEASUREMENTS_POINTS_16];
+            }
+        }
+    }
+    // then compute P_new = (I-KH)P(I-KH)'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            P_new[i*(i+1)/2+j] = 0.;
+            for (int k = 0; k < N_STATES; k++) {
+                for (int l = 0; l < N_STATES; l++) {
+                    P_new[i*(i+1)/2+j] += I_KH[i+k*N_STATES] * ekf_P_index(k,l) * I_KH[j+l*N_STATES];
+                }
+            }
+        }
+    }
+    
+    // add KRK'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            for (int k = 0; k < N_MEASUREMENTS_POINTS_16; k++) {
+                for (int l = 0; l < N_MEASUREMENTS_POINTS_16; l++) {
+                    P_new[i*(i+1)/2+j] += K[i + k*N_STATES] * R[k] * ((k == l) ? 1.0 : 0.0) * K[j + l*N_STATES];
+                }
             }
         }
     }
