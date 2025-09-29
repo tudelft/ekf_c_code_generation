@@ -18,7 +18,13 @@ wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr,wex,wey,wez,wephi,wetheta,wepsi = W
 
 quat = Quaternion(qw, qx, qy, qz) # does norm 1 automatically renormaize?
 quat_inv = Quaternion(qw, -qx, -qy, -qz)
+Rx = Matrix([[1, 0, 0], [0, cos(ephi), -sin(ephi)], [0, sin(ephi), cos(ephi)]])
+Ry = Matrix([[cos(etheta), 0, sin(etheta)],[0, 1, 0],[-sin(etheta), 0, cos(etheta)]])
+Rz = Matrix([[cos(epsi), -sin(epsi), 0],[sin(epsi), cos(epsi), 0], [0, 0, 1]])
+Re = Rz*Ry*Rx
+
 a_NED = Quaternion.rotate_point([ax-bx-wx,ay-by-wy,az-bz-wz], quat)
+v_body = Quaternion.rotate_point([vx, vy, vz], quat_inv)
 
 # https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
 #pqr_hat = Matrix([p-lp-wp, q-lq-wq, r-lr-wr])
@@ -101,12 +107,13 @@ h = Matrix([x,y,z,qw,qx,qy,qz])
 H = h.jacobian(X)
 measurement_models['pos_quat'] = (h, H)
 
+# body velocity measurement
+h = Matrix([v_body[0], v_body[1], v_body[2]])
+H = h.jacobian(X)
+measurement_models['vel_body'] = (h, H)
+
 # projected points measurement 1-16
 fx, fy, cx, cy = symbols('fx fy cx cy')
-Rx = Matrix([[1, 0, 0], [0, cos(ephi), -sin(ephi)], [0, sin(ephi), cos(ephi)]])
-Ry = Matrix([[cos(etheta), 0, sin(etheta)],[0, 1, 0],[-sin(etheta), 0, cos(etheta)]])
-Rz = Matrix([[cos(epsi), -sin(epsi), 0],[sin(epsi), cos(epsi), 0], [0, 0, 1]])
-Re = Rz*Ry*Rx
 max_points = 16
 points_3d = [symbols(f'p3d{i}_x p3d{i}_y p3d{i}_z') for i in range(max_points)]
 points_2d = []

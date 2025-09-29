@@ -50,6 +50,13 @@ void ekf_h_pos_quat(float h[N_MEASUREMENTS_POS_QUAT]);
 void ekf_H_pos_quat(float H[N_MEASUREMENTS_POS_QUAT][N_STATES]);
 void ekf_update_pos_quat(const float Z[N_MEASUREMENTS_POS_QUAT], int num_iter);
 
+// vel_body measurement model:
+#define N_MEASUREMENTS_VEL_BODY 3
+void ekf_set_R_vel_body(float R_diag[N_MEASUREMENTS_VEL_BODY]); // set measurement noise covariance matrix diagonal
+void ekf_h_vel_body(float h[N_MEASUREMENTS_VEL_BODY]);
+void ekf_H_vel_body(float H[N_MEASUREMENTS_VEL_BODY][N_STATES]);
+void ekf_update_vel_body(const float Z[N_MEASUREMENTS_VEL_BODY], int num_iter);
+
 // points_1 measurement model:
 #define N_MEASUREMENTS_POINTS_1 2
 void ekf_set_R_points_1(float R_diag[N_MEASUREMENTS_POINTS_1]); // set measurement noise covariance matrix diagonal
