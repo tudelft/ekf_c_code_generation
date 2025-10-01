@@ -12,7 +12,7 @@ dt=symbols('dt')
 # continuous dynamics:
 g = 9.81
 # pos, vel, att, acc bias, gyro bias, extrinsics
-x,y,z,vx,vy,vz,qw,qx,qy,qz,bx,by,bz,bp,bq,br,ex,ey,ez,ephi,etheta,epsi = X
+x,y,z,vbx,vby,vbz,qw,qx,qy,qz,bx,by,bz,bp,bq,br,ex,ey,ez,ephi,etheta,epsi = X
 ax,ay,az,p,q,r = U
 wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr,wex,wey,wez,wephi,wetheta,wepsi = W
 
@@ -23,28 +23,21 @@ Ry = Matrix([[cos(etheta), 0, sin(etheta)],[0, 1, 0],[-sin(etheta), 0, cos(ethet
 Rz = Matrix([[cos(epsi), -sin(epsi), 0],[sin(epsi), cos(epsi), 0], [0, 0, 1]])
 Re = Rz*Ry*Rx
 
-a_NED = Quaternion.rotate_point([ax-bx-wx,ay-by-wy,az-bz-wz], quat)
-v_body = Quaternion.rotate_point([vx, vy, vz], quat_inv)
+acc = Matrix([ax-bx-wx, ay-by-wy, az-bz-wz])
+omega = Matrix([p-bp-wp, q-bq-wq, r-br-wr])
 
-# https://ahrs.readthedocs.io/en/latest/filters/angular.html#quaternion-derivative
-#pqr_hat = Matrix([p-lp-wp, q-lq-wq, r-lr-wr])
-#Omega_pqr = Matrix([
-#    [0,          -pqr_hat[0], -pqr_hat[1], -pqr_hat[2]],
-#    [pqr_hat[0],  0,           pqr_hat[2], -pqr_hat[1]],
-#    [pqr_hat[1], -pqr_hat[2],  0,          +pqr_hat[0]],
-#    [pqr_hat[2], +pqr_hat[1], -pqr_hat[0], 0],
-#])
-#q_dot = 0.5*Omega_pqr * Matrix([quat.a, quat.b, quat.c, quat.d])
+gbody = Quaternion.rotate_point([0, 0, g], quat_inv)
+v_world = Quaternion.rotate_point([vbx, vby, vbz], quat)
+v_body = Matrix([vbx, vby, vbz])
+
 pqr_hat = Quaternion(0, p-bp-wp, q-bq-wq, r-br-wr)
 q_dot = 0.5 * quat * pqr_hat
 
+v_body_dot = acc - omega.cross(v_body) + Matrix(gbody)
+
 f_continuous = Matrix([
-    vx,
-    vy,
-    vz,
-    a_NED[0],
-    a_NED[1],
-    a_NED[2] + g,
+    v_world[0], v_world[1], v_world[2],
+    v_body_dot[0], v_body_dot[1], v_body_dot[2],
     q_dot.a,
     q_dot.b,
     q_dot.c,
@@ -68,7 +61,7 @@ ex_min, ex_max, ey_min, ey_max, ez_min, ez_max, ephi_min, ephi_max, etheta_min, 
 
 Xnorm = Matrix([
     x, y, z,
-    vx, vy, vz,
+    vbx, vby, vbz,
     qw/q_norm, qx/q_norm, qy/q_norm, qz/q_norm,
     clamp(bx, bx_min, bx_max),
     clamp(by, by_min, by_max),
