@@ -2,9 +2,9 @@ from sympy import *
 from sympy.codegen.ast import CodeBlock, Assignment
 
 # states, inputs, and process noise
-X=Matrix(symbols('X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8] X[9] X[10] X[11] X[12] X[13] X[14] X[15] X[16] X[17] X[18] X[19] X[20] X[21]'))
+X=Matrix(symbols('X[0] X[1] X[2] X[3] X[4] X[5] X[6] X[7] X[8] X[9] X[10] X[11] X[12] X[13] X[14] X[15] X[16] X[17] X[18] X[19] X[20] X[21] X[22] X[23] X[24] X[25]'))
 U=Matrix(symbols('U[0] U[1] U[2] U[3] U[4] U[5]'))
-W=Matrix(symbols('W[0] W[1] W[2] W[3] W[4] W[5] W[6] W[7] W[8] W[9] W[10] W[11], W[12], W[13], W[14], W[15], W[16], W[17]'))
+W=Matrix(symbols('W[0] W[1] W[2] W[3] W[4] W[5] W[6] W[7] W[8] W[9] W[10] W[11] W[12] W[13] W[14] W[15] W[16] W[17] W[18] W[19] W[20] W[21]'))
 
 # time step
 dt=symbols('dt')
@@ -12,9 +12,9 @@ dt=symbols('dt')
 # continuous dynamics:
 g = 9.81
 # pos, vel, att, acc bias, gyro bias, extrinsics
-x,y,z,vbx,vby,vbz,qw,qx,qy,qz,bx,by,bz,bp,bq,br,ex,ey,ez,ephi,etheta,epsi = X
+x,y,z,vbx,vby,vbz,qw,qx,qy,qz,bx,by,bz,bp,bq,br,ex,ey,ez,ephi,etheta,epsi,fx,fy,cx,cy = X
 ax,ay,az,p,q,r = U
-wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr,wex,wey,wez,wephi,wetheta,wepsi = W
+wx,wy,wz,wp,wq,wr,wbx,wby,wbz,wbp,wbq,wbr,wex,wey,wez,wephi,wetheta,wepsi,wfx,wfy,wcx,wcy = W
 
 quat = Quaternion(qw, qx, qy, qz) # does norm 1 automatically renormaize?
 quat_inv = Quaternion(qw, -qx, -qy, -qz)
@@ -43,7 +43,8 @@ f_continuous = Matrix([
     q_dot.c,
     q_dot.d,
     wbx, wby, wbz, wbp, wbq, wbr,
-    wex, wey, wez, wephi, wetheta, wepsi
+    wex, wey, wez, wephi, wetheta, wepsi,
+    wfx, wfy, wcx, wcy
 ])
 
 # discretized dynamics:
@@ -58,6 +59,8 @@ def clamp(v, vmin, vmax): return Max(Min(v, vmax), vmin)
 bx_min, bx_max, by_min, by_max, bz_min, bz_max, bp_min, bp_max, bq_min, bq_max, br_min, br_max = symbols('bx_min bx_max by_min by_max bz_min bz_max bp_min bp_max bq_min bq_max br_min br_max')
 # extrinsic bounds
 ex_min, ex_max, ey_min, ey_max, ez_min, ez_max, ephi_min, ephi_max, etheta_min, etheta_max, epsi_min, epsi_max = symbols('ex_min ex_max ey_min ey_max ez_min ez_max ephi_min ephi_max etheta_min etheta_max epsi_min epsi_max')
+# intrinsics bounds
+fx_min, fx_max, fy_min, fy_max, cx_min, cx_max, cy_min, cy_max = symbols('fx_min fx_max fy_min fy_max cx_min cx_max cy_min cy_max')
 
 Xnorm = Matrix([
     x, y, z,
@@ -74,7 +77,11 @@ Xnorm = Matrix([
     clamp(ez, ez_min, ez_max),
     clamp(ephi, ephi_min, ephi_max),
     clamp(etheta, etheta_min, etheta_max),
-    clamp(epsi, epsi_min, epsi_max)
+    clamp(epsi, epsi_min, epsi_max),
+    clamp(fx, fx_min, fx_max),
+    clamp(fy, fy_min, fy_max),
+    clamp(cx, cx_min, cx_max),
+    clamp(cy, cy_min, cy_max)
 ])
 
 # collect all min/max bounds in a single global_vars list
@@ -82,9 +89,12 @@ global_vars = [
     bx_min, bx_max, by_min, by_max, bz_min, bz_max,
     bp_min, bp_max, bq_min, bq_max, br_min, br_max,
     ex_min, ex_max, ey_min, ey_max, ez_min, ez_max,
-    ephi_min, ephi_max, etheta_min, etheta_max, epsi_min, epsi_max
+    ephi_min, ephi_max, etheta_min, etheta_max, epsi_min, epsi_max,
+    fx_min, fx_max, fy_min, fy_max, cx_min, cx_max, cy_min, cy_max
 ]
 global_vars_default = [-10,10]*12
+# intrinsics reasonable defaults
+global_vars_default += [0,2000,0,2000,0,2000, 0,2000]
 global_vars = list(zip([v.name for v in global_vars], global_vars_default))
 
 # MEASUREMENT MODELS
@@ -106,7 +116,6 @@ H = h.jacobian(X)
 measurement_models['vel_body'] = (h, H)
 
 # projected points measurement 1-16
-fx, fy, cx, cy = symbols('fx fy cx cy')
 max_points = 16
 points_3d = [symbols(f'p3d{i}_x p3d{i}_y p3d{i}_z') for i in range(max_points)]
 points_2d = []
@@ -136,7 +145,7 @@ for p in points_2d:
 for i in range(max_points):
     hi = Matrix(h_[0:2*(i+1)])
     Hi = hi.jacobian(X)
-    params = [fx, fy, cx, cy]
+    params = []
     for p in points_3d[0:i+1]:
         params.extend(p)
     measurement_models[f'points_{i+1}'] = (hi, Hi, params)
