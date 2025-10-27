@@ -171,6 +171,12 @@ void ekf_update_{{meas.name}}(const float Z[N_MEASUREMENTS_{{meas.name|upper}}]{
     float *R = ekf_R_{{meas.name}};
 
     // iterated ekf
+
+    // save prior state for IEKF iterations
+    static float X_prior[N_STATES];
+    for (int i = 0; i < N_STATES; i++) X_prior[i] = X[i];
+
+    // IEKF iterations
     for (int iter = 0; iter < num_iter; iter++) {
         // prepare gain calculation
         // compute H
@@ -212,13 +218,25 @@ void ekf_update_{{meas.name}}(const float Z[N_MEASUREMENTS_{{meas.name|upper}}]{
             }
         }
 
-        // UPDATE STEP X_new = ...
-        for (int i = 0; i < N_STATES; i++) {
-            X_new[i] = X[i];
-            for (int j = 0; j < N_MEASUREMENTS_{{meas.name|upper}}; j++) {
-                X_new[i] += K[i + j*N_STATES] * (Z[j] - h[j]);
+        // compute iterated innovation: y_iter = Z - h + H*(X - X_prior)
+        float y_iter[N_MEASUREMENTS_{{meas.name|upper}}];
+        for (int j = 0; j < N_MEASUREMENTS_{{meas.name|upper}}; j++) {
+            float acc = Z[j] - h[j];
+            for (int k = 0; k < N_STATES; k++) {
+                // H is m x n, column-major: H[row + col*m]
+                acc += H[j + k*N_MEASUREMENTS_{{meas.name|upper}}] * (X[k] - X_prior[k]);
             }
-        }   
+            y_iter[j] = acc;
+        }
+
+        // state iterate: x^{i+1} = x_prior + K * y_iter
+        for (int i = 0; i < N_STATES; i++) {
+            float acc = 0.f;
+            for (int j = 0; j < N_MEASUREMENTS_{{meas.name|upper}}; j++) {
+                acc += K[i + j*N_STATES] * y_iter[j];
+            }
+            X_new[i] = X_prior[i] + acc;
+        }
 
         // swap X, X_new
         swap_ptr = X;
@@ -229,20 +247,69 @@ void ekf_update_{{meas.name}}(const float Z[N_MEASUREMENTS_{{meas.name|upper}}]{
         ekf_normalize();
     }
 
-    // UPDATE STEP P_new = (I - K*H)*P
-    for (int i = 0; i < N_STATES; i++) {
-        for (int j = 0; j <= i; j++) { // only lower diagonal
-            P_new[i*(i+1)/2 + j] = P[i*(i+1)/2 + j];
-            for (int k = 0; k < N_MEASUREMENTS_{{meas.name|upper}}; k++) {
-                P_new[i*(i+1)/2 + j] -= K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_{{meas.name|upper}}];
+    // --- Recompute at final state (after last iterate + normalize) ---
+    ekf_H_{{meas.name}}(H{% if meas.num_params > 0 %}, param{% endif %});
+    ekf_h_{{meas.name}}(h{% if meas.num_params > 0 %}, param{% endif %});
+
+    // HP = H * P   (m x n), col-major
+    for (int i = 0; i < N_MEASUREMENTS_{{meas.name|upper}}; i++) {
+        for (int j = 0; j < N_STATES; j++) {
+            float sum = 0.f;
+            for (int k = 0; k < N_STATES; k++) {
+                sum += H[i + k*N_MEASUREMENTS_{{meas.name|upper}}] * ekf_P_index(k, j);
             }
+            HP[i + j*N_MEASUREMENTS_{{meas.name|upper}}] = sum;
         }
     }
 
-    // swap P, P_new pointers
-    swap_ptr = P;
-    P = P_new;
-    P_new = swap_ptr;
+    // S = HPH' + R
+    for (int i = 0; i < N_MEASUREMENTS_{{meas.name|upper}}; i++) {
+        for (int j = 0; j < N_MEASUREMENTS_{{meas.name|upper}}; j++) {
+            float sum = 0.f;
+            for (int k = 0; k < N_STATES; k++) {
+                sum += H[i + k*N_MEASUREMENTS_{{meas.name|upper}}] * HP[j + k*N_MEASUREMENTS_{{meas.name|upper}}];
+            }
+            S[i + j*N_MEASUREMENTS_{{meas.name|upper}}] = sum;
+        }
+        S[i + i*N_MEASUREMENTS_{{meas.name|upper}}] += R[i];
+    }
+
+    // K = P H' S^{-1}  (solve via chol)
+    chol(S_chol, S, S_iDiag, N_MEASUREMENTS_{{meas.name|upper}});
+    for (int i = 0; i < N_STATES; i++) {
+        float k_row[N_MEASUREMENTS_{{meas.name|upper}}];
+        chol_solve(S_chol, S_iDiag, N_MEASUREMENTS_{{meas.name|upper}}, (HP + i*N_MEASUREMENTS_{{meas.name|upper}}), k_row);
+        for (int j = 0; j < N_MEASUREMENTS_{{meas.name|upper}}; j++) {
+            K[i + j*N_STATES] = k_row[j];
+        }
+    }
+
+    // Joseph form: P+ = P - KHP - (KHP)' + K S K'
+    for (int i = 0; i < N_STATES; i++) {
+        for (int j = 0; j <= i; j++) {
+            float Pij = P[i*(i+1)/2 + j];
+
+            float KHP_ij = 0.f, KHP_ji = 0.f;
+            for (int k = 0; k < N_MEASUREMENTS_{{meas.name|upper}}; k++) {
+                KHP_ij += K[i + k*N_STATES] * HP[k + j*N_MEASUREMENTS_{{meas.name|upper}}];
+                KHP_ji += K[j + k*N_STATES] * HP[k + i*N_MEASUREMENTS_{{meas.name|upper}}];
+            }
+
+            float KSKt_ij = 0.f;
+            for (int k = 0; k < N_MEASUREMENTS_{{meas.name|upper}}; k++) {
+                float Skj = 0.f;
+                for (int l = 0; l < N_MEASUREMENTS_{{meas.name|upper}}; l++) {
+                    Skj += S[k + l*N_MEASUREMENTS_{{meas.name|upper}}] * K[j + l*N_STATES];
+                }
+                KSKt_ij += K[i + k*N_STATES] * Skj;
+            }
+
+            P_new[i*(i+1)/2 + j] = Pij - KHP_ij - KHP_ji + KSKt_ij;
+        }
+    }
+
+    // swap P, P_new
+    swap_ptr = P; P = P_new; P_new = swap_ptr;
 }
 {% endfor %}
 
