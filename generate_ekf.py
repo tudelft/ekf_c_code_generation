@@ -192,7 +192,9 @@ prediction_code = ccode(prediction_code)
 prediction_code = renaming(prediction_code)
 
 # integrate code
-Xint_assignments = [Assignment(symbols(f'X_integrate[{i}]'), Xpred[i]) for i in range(len(X))]
+# X integration code is just like prediction code the X is renamed to X_
+Xint = Xpred.subs([(symbols(f'X[{i}]'), symbols(f'X_[{i}]')) for i in range(len(X))])
+Xint_assignments = [Assignment(symbols(f'X_integrate[{i}]'), Xint[i]) for i in range(len(X))]
 integrate_code = CodeBlock(*Xint_assignments)
 integrate_code = integrate_code.cse(symbols=(symbols(f'tmp[{i}]') for i in range(10000)))
 integrate_code = integrate_code.simplify()
