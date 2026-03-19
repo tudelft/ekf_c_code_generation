@@ -72,6 +72,10 @@ float ekf_R_aruco[N_MEASUREMENTS_ARUCO];            // Kalman filter measurement
 float ekf_R_sixdof[N_MEASUREMENTS_SIXDOF];          // Kalman filter measurement noise covariance matrix (diagonal) - SixDOF
 float ekf_R_relbeacon[N_MEASUREMENTS_RELBEACON];    // Kalman filter measurement noise covariance matrix (diagonal) - Relbeacon
 float ekf_R_gps[N_MEASUREMENTS_GPS];                // Kalman filter measurement noise covariance matrix (diagonal) - GPS
+float ekf_last_HX_aruco[N_MEASUREMENTS_ARUCO];      // Last linearized measurement projection H*X (Aruco)
+float ekf_last_HX_sixdof[N_MEASUREMENTS_SIXDOF];    // Last linearized measurement projection H*X (SixDOF)
+float ekf_last_HX_relbeacon[N_MEASUREMENTS_RELBEACON]; // Last linearized measurement projection H*X (Relbeacon)
+float ekf_last_HX_gps[N_MEASUREMENTS_GPS];          // Last linearized measurement projection H*X (GPS)
 
 // state
 float ekf_X[N_STATES];
@@ -103,6 +107,22 @@ float* ekf_get_X() {
 
 float* ekf_get_P() {
     return P;
+}
+
+float* ekf_get_last_HX_aruco(void) {
+	return ekf_last_HX_aruco;
+}
+
+float* ekf_get_last_HX_sixdof(void) {
+	return ekf_last_HX_sixdof;
+}
+
+float* ekf_get_last_HX_relbeacon(void) {
+	return ekf_last_HX_relbeacon;
+}
+
+float* ekf_get_last_HX_gps(void) {
+	return ekf_last_HX_gps;
 }
 
 void ekf_set_Q(float Q[N_INPUTS]) {
@@ -238,7 +258,8 @@ void ekf_predict(float U[N_INPUTS], float dt) {
 void ekf_update_aruco(struct FloatVect3 aruco_pos) {
     
     // Prepare measurement vector from measurements
-    float Z[N_MEASUREMENTS_ARUCO];
+	float Z[N_MEASUREMENTS_ARUCO];
+	float *HX = ekf_last_HX_aruco;
     Z[0] = aruco_pos.x;
     Z[1] = aruco_pos.y;
     Z[2] = aruco_pos.z;
@@ -484,7 +505,8 @@ void ekf_update_aruco(struct FloatVect3 aruco_pos) {
 void ekf_update_sixdof(struct FloatVect3 sixdof_pos, struct FloatQuat sixdof_quat) {
     
     // Prepare measurement vector from measurements
-    float Z[N_MEASUREMENTS_SIXDOF];
+	float Z[N_MEASUREMENTS_SIXDOF];
+	float *HX = ekf_last_HX_sixdof;
     Z[0] = sixdof_pos.x;
     Z[1] = sixdof_pos.y;
     Z[2] = sixdof_pos.z;
@@ -800,7 +822,8 @@ void ekf_update_sixdof_pos_var(struct FloatVect3 sixdof_pos_var) {
 void ekf_update_relbeacon(struct FloatVect3 relbeacon_pos) {
     
     // Prepare measurement vector from measurements
-    float Z[N_MEASUREMENTS_RELBEACON];
+	float Z[N_MEASUREMENTS_RELBEACON];
+	float *HX = ekf_last_HX_relbeacon;
     Z[0] = relbeacon_pos.x;
     Z[1] = relbeacon_pos.y;
     Z[2] = relbeacon_pos.z;
@@ -1046,7 +1069,8 @@ void ekf_update_relbeacon(struct FloatVect3 relbeacon_pos) {
 void ekf_update_gps(struct FloatVect3 rtk_pos, struct FloatVect3 rtk_speed) {
     
     // Prepare measurement vector from measurements
-    float Z[N_MEASUREMENTS_GPS];
+	float Z[N_MEASUREMENTS_GPS];
+	float *HX = ekf_last_HX_gps;
     Z[0] = rtk_pos.x;
     Z[1] = rtk_pos.y;
     Z[2] = rtk_pos.z;

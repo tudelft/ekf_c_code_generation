@@ -29,6 +29,10 @@
 // getters
 float* ekf_get_X();     // get state vector
 float* ekf_get_P();     // get covariance matrix (lower diagonal)
+float* ekf_get_last_HX_aruco(void);      // get last aruco linearized measurement projection H*X
+float* ekf_get_last_HX_sixdof(void);     // get last sixdof linearized measurement projection H*X
+float* ekf_get_last_HX_relbeacon(void);  // get last relbeacon linearized measurement projection H*X
+float* ekf_get_last_HX_gps(void);        // get last gps linearized measurement projection H*X
 
 #define ekf_P_index(i,j) ((i>=j) ? ekf_get_P()[i*(i+1)/2+j] : ekf_get_P()[j*(j+1)/2+i])
 #define ekf_X_index(i) ekf_get_X()[i]
@@ -37,7 +41,7 @@ float* ekf_get_P();     // get covariance matrix (lower diagonal)
 void ekf_set_Q(float Q[N_STATES]);                          // set process noise covariance matrix diagonal
 void ekf_set_R_aruco(float R[N_MEASUREMENTS_ARUCO]);        // set measurement noise covariance matrix diagonal (Aruco)
 void ekf_set_R_sixdof(float R[N_MEASUREMENTS_SIXDOF]);      // set measurement noise covariance matrix diagonal (SixDOF)
-void ekf_set_R_relbeacon(float R[N_MEASUREMENTS_RELBEACON]) // set measurement noise covariance matrix diagonal (Relbeacon)
+void ekf_set_R_relbeacon(float R[N_MEASUREMENTS_RELBEACON]); // set measurement noise covariance matrix diagonal (Relbeacon)
 void ekf_set_R_gps(float R[N_MEASUREMENTS_GPS]);            // set measurement noise covariance matrix diagonal (GPS)
 void ekf_set_X(float X0[N_STATES]);                         // set state vector
 void ekf_set_P_diag(float P_diag[N_STATES]);                // set covariance matrix diagonal
